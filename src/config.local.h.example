@@ -1,0 +1,9 @@
+#pragma once
+
+// Copy to config.local.h and fill in (config.local.h is gitignored).
+#define WIFI_SSID "your-ssid"
+#define WIFI_PASS "your-password"
+
+// Optional overrides:
+// #define DEFAULT_FACE FaceId::Lume
+// #define NTP_TZ_OFFSET_SEC (8 * 3600)

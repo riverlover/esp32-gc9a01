@@ -147,10 +147,9 @@ fatal error: esp32-hal-periman.h: No such file or directory
 | 轴心 | 双层圆心 |
 | 文字 | `QUARTZ` / `ESP32-C3` |
 
-### 时间来源
+### 时间来源（第 9 节当时）
 
 - **软时钟**：上电从 `10:08:00` 起按 `millis()` 累加（经典表盘演示姿态）。
-- 尚未接 Wi‑Fi NTP / RTC；改 `START_H` / `START_M` / `START_S` 可调起始时刻。
 
 ### 绘制策略
 
@@ -169,11 +168,65 @@ fatal error: esp32-hal-periman.h: No such file or directory
 
 ---
 
+## 10. 模块化表盘 + Wi‑Fi NTP（当前）
+
+将单文件表盘拆成可切换风格，并支持 NTP 真时；未配置 Wi‑Fi 时仍回退软时钟。
+
+### 目录结构
+
+```
+src/
+├── main.cpp                 # 编排：显示 / 时间 / 串口切面
+├── config.h                 # 默认配置；可被 config.local.h 覆盖
+├── config.local.h.example   # 复制为 config.local.h 填 Wi‑Fi
+├── pins.h                   # 屏引脚
+├── time/TimeService.*       # Wi‑Fi + NTP / 软时钟
+└── face/
+    ├── IWatchFace.h         # 表盘接口 render(gfx, tm)
+    ├── FaceId.h             # Classic / Lume / Skeleton / Calendar
+    ├── FaceRegistry.*       # 按 FaceId 取实例
+    ├── gfx_util.h           # 共用极坐标 / 指针 / 刻度
+    ├── FaceClassic.*
+    ├── FaceLume.*           # 夜光
+    ├── FaceSkeleton.*       # 镂空
+    └── FaceCalendar.*       # 3 点日历窗
+```
+
+`src/config.local.h` 已加入 `.gitignore`，勿提交密码。
+
+### 启用真实时间
+
+```bash
+cp src/config.local.h.example src/config.local.h
+# 编辑 WIFI_SSID / WIFI_PASS，可选 DEFAULT_FACE
+pio run -t upload
+```
+
+时区默认 `NTP_TZ_OFFSET_SEC = 8*3600`（CST）。串口应见 `NTP OK ...` 与 `Watch OK [NTP] ...`。
+
+### 切换表盘
+
+| 方式 | 操作 |
+|------|------|
+| 编译期 | `config.local.h` 里 `#define DEFAULT_FACE FaceId::Lume` |
+| 运行期 | 串口监视器发 `1`/`2`/`3`/`4` 或 `n` 循环 |
+
+| 键 | 风格 |
+|----|------|
+| 1 | Classic 经典 |
+| 2 | Lume 夜光 |
+| 3 | Skeleton 镂空 |
+| 4 | Calendar 日历窗 |
+
+新增风格：实现 `IWatchFace` → 注册到 `FaceRegistry` → 扩展 `FaceId`。
+
+---
+
 ## 时间线摘要
 
 1. 硬件选型确认 → 2. 接线方案与颜色约定 → 3. 上电安全检查 →  
 4. macOS 识别 USB（免驱）→ 5. 代理安装 PlatformIO →  
 6. 写 bring-up 工程 → 7. 遇 GFX 版本冲突并钉版本 → 8. 烧录成功并点亮 →  
-9. 改为拟真模拟表盘并烧录验证。
+9. 改为拟真模拟表盘 → 10. 模块化多风格 + Wi‑Fi NTP。
 
 更精简的交接信息见 [HANDOFF.md](./HANDOFF.md)。
