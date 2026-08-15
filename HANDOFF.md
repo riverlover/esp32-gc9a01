@@ -9,7 +9,7 @@
 | 硬件接线 | 已接好并点亮 |
 | macOS 识别 | Espressif USB JTAG/serial，无需额外驱动 |
 | 工具链 | PlatformIO Core 6.1.19（`~/.platformio/penv/bin`） |
-| 固件 | 已烧录 bring-up 程序；屏显 `GC9A01` / `ESP32-C3`，中心色圆循环变色 |
+| 固件 | **拟真模拟表盘**（软时钟，自 10:08:00 起走） |
 | 工程路径 | `/Users/lizhenhe/vscode/esp32-GC9A01` |
 
 ## 硬件
@@ -45,6 +45,17 @@
   - **不要随意升到 1.5.x**：会依赖 `esp32-hal-periman.h`（Arduino-ESP32 3.x），与当前 PlatformIO 自带的 2.x core 不兼容。
 - USB CDC：`ARDUINO_USB_MODE=1` + `ARDUINO_USB_CDC_ON_BOOT=1`
 
+## 当前固件：拟真表盘
+
+`src/main.cpp` 绘制圆形模拟表：
+
+- 表圈 + 60 刻度 + 12/3/6/9 数字
+- 时 / 分 / 秒针（秒针红色）
+- **软时钟**：`START_H/M/S` 默认 `10:08:00`，按 `millis()` 前进
+- 每秒全屏重绘一次（无 RGB 帧缓冲）
+
+串口成功日志示例：`Watch OK @ 10:08:00`
+
 ## 常用命令
 
 串口端口可能变化，先确认：
@@ -76,14 +87,15 @@ pio device monitor -b 115200
 ```
 esp32-GC9A01/
 ├── HANDOFF.md          # 本交接文档
-├── STEPS.md            # 全程步骤记录
+├── STEPS.md            # 全程步骤记录（含表盘一节）
 ├── platformio.ini
-└── src/main.cpp        # 点亮 / 色条 / 中心闪烁圆
+└── src/main.cpp        # 拟真模拟表盘
 ```
 
-## 后续可做（未开始）
+## 后续可做
 
-- 去掉 bring-up，改正式 UI（时钟、传感器、动画等）
+- Wi‑Fi NTP 同步真实时间（或外接 RTC）
+- 表盘风格变体（夜光、镂空、日历窗）
 - 固定 `upload_port` 为通配或脚本自动探测
 - 若要用 Arduino_GFX 1.5+，需换支持 Arduino-ESP32 3.x 的 platform（如 pioarduino）
 
