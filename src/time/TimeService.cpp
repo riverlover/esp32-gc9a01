@@ -1,55 +1,17 @@
 #include "TimeService.h"
 
+#include <sys/time.h>
 #include <string.h>
 #include <WiFi.h>
 
 #include "config.h"
+#include "wifi/WifiProvision.h"
 
 namespace TimeService {
 
 static Source gSource = Source::Soft;
 static uint32_t gSoftBootMs = 0;
-
-static bool wifiConfigured() {
-  return WIFI_SSID[0] != '\0' && strcmp(WIFI_SSID, "your-ssid") != 0;
-}
-
-static bool syncNtp() {
-  Serial.printf("WiFi connecting to \"%s\"...\n", WIFI_SSID);
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-
-  const uint32_t start = millis();
-  while (WiFi.status() != WL_CONNECTED && (millis() - start) < WIFI_CONNECT_TIMEOUT_MS) {
-    delay(250);
-    Serial.print('.');
-  }
-  Serial.println();
-
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi failed; using soft clock");
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    return false;
-  }
-
-  Serial.print("WiFi OK, IP=");
-  Serial.println(WiFi.localIP());
-
-  configTime(NTP_TZ_OFFSET_SEC, 0, NTP_SERVER_1, NTP_SERVER_2);
-
-  struct tm t;
-  for (int i = 0; i < 30; i++) {
-    if (getLocalTime(&t, 500)) {
-      Serial.printf("NTP OK %04d-%02d-%02d %02d:%02d:%02d\n", t.tm_year + 1900, t.tm_mon + 1,
-                    t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
-      return true;
-    }
-  }
-
-  Serial.println("NTP timeout; using soft clock");
-  return false;
-}
+static WifiProvision::StatusFn gStatus = nullptr;
 
 static void softNow(struct tm &out) {
   const uint32_t elapsed = (millis() - gSoftBootMs) / 1000UL;
@@ -67,27 +29,63 @@ static void softNow(struct tm &out) {
   out.tm_wday = 6;
 }
 
-void begin() {
+static bool syncNtp() {
+  configTime(NTP_TZ_OFFSET_SEC, 0, NTP_SERVER_1, NTP_SERVER_2);
+  struct tm t;
+  for (int i = 0; i < 40; i++) {
+    if (getLocalTime(&t, 500)) {
+      Serial.printf("NTP OK %04d-%02d-%02d %02d:%02d:%02d\n", t.tm_year + 1900, t.tm_mon + 1,
+                    t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
+      return true;
+    }
+  }
+  Serial.println("NTP timeout");
+  return false;
+}
+
+void begin(WifiProvision::StatusFn status) {
   gSoftBootMs = millis();
   gSource = Source::Soft;
+  gStatus = status;
 
-  if (!wifiConfigured()) {
-    Serial.println("WIFI_SSID not set — copy config.local.h.example -> config.local.h");
-    Serial.println("Using soft clock fallback");
+  const bool wifiOk = WifiProvision::ensureConnected(status);
+  if (!wifiOk) {
+    Serial.println("No Wi-Fi — soft/manual clock. Serial: s=skip  t=YYYY-MM-DD HH:MM:SS");
     return;
   }
 
+  Serial.printf("RSSI=%d dBm\n", WiFi.RSSI());
   if (syncNtp()) {
     gSource = Source::Ntp;
   }
 }
 
+void requestReprovision() { WifiProvision::forceReprovision(gStatus); }
+
+bool setManualTime(int year, int month, int day, int hour, int min, int sec) {
+  struct tm t{};
+  t.tm_year = year - 1900;
+  t.tm_mon = month - 1;
+  t.tm_mday = day;
+  t.tm_hour = hour;
+  t.tm_min = min;
+  t.tm_sec = sec;
+  const time_t epoch = mktime(&t);
+  if (epoch < 0) {
+    return false;
+  }
+  struct timeval tv = {.tv_sec = epoch, .tv_usec = 0};
+  settimeofday(&tv, nullptr);
+  gSource = Source::Manual;
+  Serial.printf("Manual time %04d-%02d-%02d %02d:%02d:%02d\n", year, month, day, hour, min, sec);
+  return true;
+}
+
 bool now(struct tm &out) {
-  if (gSource == Source::Ntp) {
+  if (gSource == Source::Ntp || gSource == Source::Manual) {
     if (getLocalTime(&out, 0)) {
       return true;
     }
-    // Transient failure: keep last soft progression rather than freeze
   }
   softNow(out);
   return true;
@@ -95,6 +93,15 @@ bool now(struct tm &out) {
 
 Source source() { return gSource; }
 
-const char *sourceName() { return gSource == Source::Ntp ? "NTP" : "Soft"; }
+const char *sourceName() {
+  switch (gSource) {
+    case Source::Ntp:
+      return "NTP";
+    case Source::Manual:
+      return "Manual";
+    default:
+      return "Soft";
+  }
+}
 
 }  // namespace TimeService

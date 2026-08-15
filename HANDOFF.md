@@ -9,7 +9,7 @@
 | 硬件接线 | 已接好并点亮 |
 | macOS 识别 | Espressif USB JTAG/serial，无需额外驱动 |
 | 工具链 | PlatformIO Core 6.1.19（`~/.platformio/penv/bin`） |
-| 固件 | **模块化多风格表盘**；Wi‑Fi NTP（未配 SSID 则软时钟） |
+| 固件 | 模块化表盘；**默认 Calendar(4)**；手机热点 `WatchESP` + NTP 已通 |
 | 工程路径 | `/Users/lizhenhe/vscode/esp32-GC9A01` |
 
 ## 硬件
@@ -38,46 +38,67 @@
 
 ## 软件栈
 
-- Platform：`espressif32`（当前 7.0.1）
-- Board：`esp32-c3-devkitm-1`
+- Platform：`espressif32`（当前 7.0.1）→ Arduino-ESP32 **2.0.17**
+- Board：`esp32-c3-devkitm-1`，`board_build.partitions = huge_app.csv`
 - Framework：Arduino
-- 库：`moononournation/GFX Library for Arduino@1.4.7`  
-  - **不要随意升到 1.5.x**：会依赖 `esp32-hal-periman.h`（Arduino-ESP32 3.x），与当前 PlatformIO 自带的 2.x core 不兼容。
+- 库：`GFX Library for Arduino@1.4.7`、`QRCode@0.0.1`  
+  - **不要升 GFX 到 1.5.x**（需 Arduino-ESP32 3.x）
 - USB CDC：`ARDUINO_USB_MODE=1` + `ARDUINO_USB_CDC_ON_BOOT=1`
 
-## 当前固件：模块化表盘
-
-### 结构
+## 工程结构
 
 ```
-src/main.cpp              # 编排
-src/config.h              # 默认；本地覆盖见下
+src/main.cpp                 # 编排 / 串口命令
+src/config.h                 # 默认；DEFAULT_FACE=Calendar
+src/config.local.h           # gitignore：Wi‑Fi 与可选覆盖
 src/config.local.h.example
 src/pins.h
-src/time/TimeService.*    # NTP / Soft
-src/face/IWatchFace.h     # 接口
-src/face/Face*.*          # Classic / Lume / Skeleton / Calendar
-src/face/FaceRegistry.*
-src/face/gfx_util.h
+src/time/TimeService.*       # NTP / Soft / Manual
+src/wifi/WifiProvision.*     # STA 连接（8.5dBm、关省电、多 mode 重试）
+src/ui/ProvQr.*              # 配网提示 / 二维码（历史 SoftAP 用）
+src/face/                    # Classic / Lume / Skeleton / Calendar
 ```
 
-### Wi‑Fi NTP
+## 表盘
+
+| 键 | 风格 | 说明 |
+|----|------|------|
+| 1 | Classic | 经典指针 |
+| 2 | Lume | 夜光 |
+| 3 | Skeleton | 镂空 |
+| **4** | **Calendar** | **日历窗（当前默认）** |
+
+- 编译期：`#define DEFAULT_FACE FaceId::Calendar`
+- 运行期：串口 `1`–`4` / `n`
+
+## Wi‑Fi / NTP（已验证路径）
+
+**成功组合**：手机个人热点 **`WatchESP` / `12345678`（WPA2）** → ESP STA → NTP。
+
+```text
+Wi-Fi OK → NTP OK → Watch OK [NTP] Calendar …
+```
+
+RF 调参（`WifiProvision.cpp`）：`WiFi.setTxPower(WIFI_POWER_8_5dBm)` + `WiFi.setSleep(WIFI_PS_NONE)`。
+
+本地配置（勿提交）：
 
 ```bash
-cp src/config.local.h.example src/config.local.h
-# 填写 WIFI_SSID / WIFI_PASS
+# src/config.local.h
+#define WIFI_SSID "WatchESP"
+#define WIFI_PASS "12345678"
+#define DEFAULT_FACE FaceId::Calendar
 ```
 
-- `config.local.h` 已 gitignore，勿提交密码。
-- 时区默认 UTC+8（`NTP_TZ_OFFSET_SEC`）。
-- 未配置或联网失败 → 软时钟（`SOFT_START_*`，默认 10:08:00）。
+串口辅助：`w SSID PASS` · `s` 跳过 Wi‑Fi · `t YYYY-MM-DD HH:MM:SS` 手动校时 · `p` 重新进热点等待。
 
-### 切换风格
+### 踩坑（Wi‑Fi）
 
-- 编译期：`#define DEFAULT_FACE FaceId::Lume`（写在 `config.local.h`）
-- 运行期串口：`1` Classic · `2` Lume · `3` Skeleton · `4` Calendar · `n` 下一个
-
-串口示例：`Watch OK [NTP] Classic 20:44:01` 或 `[Soft]`。
+1. `AUTH_EXPIRE(2)` / `4WAY_HANDSHAKE_TIMEOUT(15)` **≠ 一定密码错**；C3 Super Mini 上极常见（射频/功率/天线/双频路由）。
+2. 家宽 `TP-LINK_D6B1` 双频合一多次握手失败；小米 IoT 能连不代表 ESP 能连。
+3. ESP SoftAP / BLE 配网在本板不可靠（SoftAP 难被手机发现；BLE WiFiProv 曾 `abort`）。
+4. 华为连 ESP 热点常失败；反向「手机开热点、ESP 去连」更稳。
+5. 社区常见修复：降功率 8.5dBm、关 sleep、专用 2.4G WPA2 SSID、拔外设空载对比供电。
 
 ## 常用命令
 
@@ -85,23 +106,21 @@ cp src/config.local.h.example src/config.local.h
 ls /dev/cu.usbmodem*
 export PATH="$HOME/.platformio/penv/bin:$PATH"
 export http_proxy=http://127.0.0.1:7890 https_proxy=http://127.0.0.1:7890
-export ALL_PROXY=socks5://127.0.0.1:7890
 cd /Users/lizhenhe/vscode/esp32-GC9A01
 pio run -t upload
-pio device monitor -b 115200
+# 串口：python 读 /dev/cu.usbmodem* 115200，或 pio device monitor
 ```
 
 ## 后续可做
 
-- 开机轮播多风格 / 按键切面（省串口）
-- 外接 RTC，断网保时
-- 固定 `upload_port` 自动探测
-- 若要用 Arduino_GFX 1.5+，需换支持 Arduino-ESP32 3.x 的 platform（如 pioarduino）
+- 按键切面 / 断网保时（RTC）
+- 家宽单独 2.4G IoT SSID 再试 STA
+- 拔屏空载对比供电对握手的影响
+- Arduino_GFX 1.5+ 需换 pioarduino（ESP32 core 3.x）
 
-## 踩坑摘要
+## 其他踩坑
 
-1. macOS 对 C3 原生 USB **一般不需驱动**；设备名形如 `USB JTAG/serial debug unit`。
-2. 下载慢时务必走系统代理 `7890`。
-3. GFX `@^1.5.0` 会编译失败 → 钉死 `1.4.7`。
-4. 供电只用 **3.3V**，不要接板子 **5V** 脚给屏。
-5. Wi‑Fi 密码放 `config.local.h`，不要写进已跟踪的源码。
+1. macOS 对 C3 原生 USB 一般免驱。  
+2. 下载走代理 `7890`。  
+3. 屏供电只用 **3.3V**。  
+4. Wi‑Fi 密码只放 `config.local.h`。

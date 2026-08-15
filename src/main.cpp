@@ -1,5 +1,7 @@
 #include <Arduino.h>
 #include <Arduino_GFX_Library.h>
+#include <string.h>
+#include <time.h>
 
 #include "config.h"
 #include "face/FaceId.h"
@@ -7,6 +9,7 @@
 #include "face/IWatchFace.h"
 #include "pins.h"
 #include "time/TimeService.h"
+#include "ui/ProvQr.h"
 
 Arduino_DataBus *bus = new Arduino_ESP32SPI(TFT_DC, TFT_CS, TFT_SCLK, TFT_MOSI, -1);
 Arduino_GFX *gfx = new Arduino_GC9A01(bus, TFT_RST, 0 /* rotation */, true /* IPS */);
@@ -15,6 +18,15 @@ static FaceId gFaceId = DEFAULT_FACE;
 static IWatchFace *gFace = nullptr;
 static int lastDrawnSecond = -1;
 static bool forceRedraw = true;
+static int lastProvScreen = -1;
+
+static void showStatus(const char *msg) {
+  Serial.printf("[UI] %s\n", msg);
+  if (lastProvScreen != 2) {
+    drawPhoneHotspotHelp(gfx);
+    lastProvScreen = 2;
+  }
+}
 
 static void selectFace(FaceId id) {
   gFaceId = id;
@@ -23,15 +35,56 @@ static void selectFace(FaceId id) {
   Serial.printf("Face -> %s (%u)\n", faceName(id), static_cast<unsigned>(id));
 }
 
+static void handleSerialLine(String line) {
+  line.trim();
+  if (line.length() == 0) {
+    return;
+  }
+  if (line.equalsIgnoreCase("n")) {
+    selectFace(nextFace(gFaceId));
+    return;
+  }
+  if (line.length() == 1 && line[0] >= '1' && line[0] <= '4') {
+    selectFace(static_cast<FaceId>(line[0] - '1'));
+    return;
+  }
+  if (line.equalsIgnoreCase("p")) {
+    Serial.println("Re-enter phone-hotspot wait...");
+    lastProvScreen = -1;
+    TimeService::requestReprovision();
+    forceRedraw = true;
+    return;
+  }
+  if (line.startsWith("t ") || line.startsWith("T ")) {
+    // t 2026-08-15 21:20:00
+    int y, mo, d, h, mi, s;
+    if (sscanf(line.c_str() + 2, "%d-%d-%d %d:%d:%d", &y, &mo, &d, &h, &mi, &s) == 6) {
+      if (TimeService::setManualTime(y, mo, d, h, mi, s)) {
+        forceRedraw = true;
+      }
+    } else {
+      Serial.println("Usage: t YYYY-MM-DD HH:MM:SS");
+    }
+    return;
+  }
+  if (line.equalsIgnoreCase("h") || line == "?") {
+    Serial.println("Keys: 1-4 faces | n next | p hotspot | t YYYY-MM-DD HH:MM:SS");
+    Serial.println("Setup: w SSID PASS | s skip Wi-Fi");
+  }
+}
+
 static void handleSerial() {
+  static String buf;
   while (Serial.available() > 0) {
     const char c = (char)Serial.read();
-    if (c == 'n' || c == 'N' || c == ' ') {
-      selectFace(nextFace(gFaceId));
-    } else if (c >= '1' && c <= '4') {
-      selectFace(static_cast<FaceId>(c - '1'));
-    } else if (c == 'h' || c == '?') {
-      Serial.println("Keys: 1=Classic 2=Lume 3=Skeleton 4=Calendar  n=next");
+    if (c == '\n' || c == '\r') {
+      handleSerialLine(buf);
+      buf = "";
+    } else {
+      buf += c;
+      if (buf.length() > 80) {
+        buf = "";
+      }
     }
   }
 }
@@ -48,7 +101,8 @@ void setup() {
   delay(300);
   Serial.println();
   Serial.println("GC9A01 modular watch");
-  Serial.println("Keys: 1=Classic 2=Lume 3=Skeleton 4=Calendar  n=next");
+  Serial.println("Setup: keep hotspot on, TAP ALLOW on phone");
+  Serial.println("Or: s=skip Wi-Fi | t YYYY-MM-DD HH:MM:SS");
 
   if (!gfx->begin()) {
     Serial.println("Display init failed");
@@ -58,7 +112,12 @@ void setup() {
   }
 
   gfx->fillScreen(BLACK);
-  TimeService::begin();
+  lastProvScreen = -1;
+  showStatus("Connecting Wi-Fi...");
+  TimeService::begin(showStatus);
+
+  // If still soft clock, seed from host wall clock hint via compile is weak —
+  // user can send t ... ; auto-seed today's date with local approximate if needed.
   selectFace(DEFAULT_FACE);
 
   struct tm t{};

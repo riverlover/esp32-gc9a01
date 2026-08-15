@@ -208,17 +208,22 @@ pio run -t upload
 
 | 方式 | 操作 |
 |------|------|
-| 编译期 | `config.local.h` 里 `#define DEFAULT_FACE FaceId::Lume` |
-| 运行期 | 串口监视器发 `1`/`2`/`3`/`4` 或 `n` 循环 |
+| 编译期 | `config.local.h` / `config.h`：`#define DEFAULT_FACE FaceId::Calendar`（**当前默认 4**） |
+| 运行期 | 串口 `1`/`2`/`3`/`4` 或 `n` |
 
 | 键 | 风格 |
 |----|------|
 | 1 | Classic 经典 |
 | 2 | Lume 夜光 |
 | 3 | Skeleton 镂空 |
-| 4 | Calendar 日历窗 |
+| **4** | **Calendar 日历窗（默认）** |
 
 新增风格：实现 `IWatchFace` → 注册到 `FaceRegistry` → 扩展 `FaceId`。
+
+### Wi‑Fi 验证结论（补充）
+
+- 已通：手机热点 `WatchESP`/`12345678` + `TX=8.5dBm` + `sleep=OFF` → NTP。
+- 家宽双频 `TP-LINK_D6B1`、ESP SoftAP/BLE 配网在本板不稳定；详见 [HANDOFF.md](./HANDOFF.md)。
 
 ---
 
@@ -227,6 +232,7 @@ pio run -t upload
 1. 硬件选型确认 → 2. 接线方案与颜色约定 → 3. 上电安全检查 →  
 4. macOS 识别 USB（免驱）→ 5. 代理安装 PlatformIO →  
 6. 写 bring-up 工程 → 7. 遇 GFX 版本冲突并钉版本 → 8. 烧录成功并点亮 →  
-9. 改为拟真模拟表盘 → 10. 模块化多风格 + Wi‑Fi NTP。
+9. 拟真模拟表盘 → 10. 模块化多风格 + Wi‑Fi NTP →  
+11. C3 Super Mini Wi‑Fi 排障（AUTH_EXPIRE / 热点反向连接）→ 默认表盘固定 Calendar。
 
 更精简的交接信息见 [HANDOFF.md](./HANDOFF.md)。

@@ -28,7 +28,26 @@
 #endif
 
 #ifndef WIFI_CONNECT_TIMEOUT_MS
-#define WIFI_CONNECT_TIMEOUT_MS 15000
+#define WIFI_CONNECT_TIMEOUT_MS 20000
+#endif
+
+// BLE Wi-Fi provisioning (Espressif "ESP BLE Provisioning" app)
+#ifndef PROV_SERVICE_NAME
+#define PROV_SERVICE_NAME "GC9A01-Setup"
+#endif
+#ifndef PROV_POP
+#define PROV_POP "12345678"
+#endif
+#ifndef PROV_AP_CHANNEL
+#define PROV_AP_CHANNEL 6
+#endif
+
+// Huawei SoftAP-join is unreliable; ESP joins phone personal hotspot instead.
+#ifndef PHONE_HOTSPOT_SSID
+#define PHONE_HOTSPOT_SSID "WatchESP"
+#endif
+#ifndef PHONE_HOTSPOT_PASS
+#define PHONE_HOTSPOT_PASS "12345678"
 #endif
 
 // Soft-clock fallback when NTP is unavailable (classic demo pose).
@@ -44,5 +63,5 @@
 
 // Boot face. Runtime: Serial '1'..'4' or 'n' to cycle.
 #ifndef DEFAULT_FACE
-#define DEFAULT_FACE FaceId::Classic
+#define DEFAULT_FACE FaceId::Calendar
 #endif
