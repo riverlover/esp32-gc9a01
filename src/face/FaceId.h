@@ -7,6 +7,7 @@ enum class FaceId : uint8_t {
   Lume = 1,
   Skeleton = 2,
   Calendar = 3,
+  Photo = 4,
   Count
 };
 
@@ -20,6 +21,8 @@ inline const char *faceName(FaceId id) {
       return "Skeleton";
     case FaceId::Calendar:
       return "Calendar";
+    case FaceId::Photo:
+      return "Photo";
     default:
       return "?";
   }

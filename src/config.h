@@ -61,7 +61,7 @@
 #define SOFT_START_S 0
 #endif
 
-// Boot face. Runtime: Serial '1'..'4' or 'n' to cycle.
+// Boot face. Runtime: Serial '1'..'5' or 'n' to cycle.
 #ifndef DEFAULT_FACE
-#define DEFAULT_FACE FaceId::Calendar
+#define DEFAULT_FACE FaceId::Photo
 #endif

@@ -63,7 +63,7 @@ static void handleSerialLine(String line) {
     selectFace(nextFace(gFaceId));
     return;
   }
-  if (line.length() == 1 && line[0] >= '1' && line[0] <= '4') {
+  if (line.length() == 1 && line[0] >= '1' && line[0] <= '5') {
     selectFace(static_cast<FaceId>(line[0] - '1'));
     return;
   }
@@ -87,7 +87,7 @@ static void handleSerialLine(String line) {
     return;
   }
   if (line.equalsIgnoreCase("h") || line == "?") {
-    Serial.println("Keys: 1-4 faces | n next | p hotspot | t YYYY-MM-DD HH:MM:SS");
+    Serial.println("Keys: 1-5 faces | n next | p hotspot | t YYYY-MM-DD HH:MM:SS");
     Serial.println("Setup: w SSID PASS | s skip Wi-Fi");
   }
 }
