@@ -12,7 +12,9 @@
 #include "ui/ProvQr.h"
 
 Arduino_DataBus *bus = new Arduino_ESP32SPI(TFT_DC, TFT_CS, TFT_SCLK, TFT_MOSI, -1);
-Arduino_GFX *gfx = new Arduino_GC9A01(bus, TFT_RST, 0 /* rotation */, true /* IPS */);
+Arduino_GFX *display = new Arduino_GC9A01(bus, TFT_RST, 0 /* rotation */, true /* IPS */);
+// Off-screen RGB565 buffer (~112KB). Faces draw here, then flush once — no black flash.
+static Arduino_Canvas *canvas = nullptr;
 
 static FaceId gFaceId = DEFAULT_FACE;
 static IWatchFace *gFace = nullptr;
@@ -23,9 +25,26 @@ static int lastProvScreen = -1;
 static void showStatus(const char *msg) {
   Serial.printf("[UI] %s\n", msg);
   if (lastProvScreen != 2) {
-    drawPhoneHotspotHelp(gfx);
+    drawPhoneHotspotHelp(display);
     lastProvScreen = 2;
   }
+}
+
+static bool ensureCanvas() {
+  if (canvas) {
+    return true;
+  }
+  canvas = new Arduino_Canvas(240, 240, display);
+  // Display already begun; skip second begin on the panel.
+  if (!canvas->begin(GFX_SKIP_OUTPUT_BEGIN)) {
+    Serial.printf("Canvas OOM (free=%u) — direct draw, may flicker\n",
+                  (unsigned)ESP.getFreeHeap());
+    delete canvas;
+    canvas = nullptr;
+    return false;
+  }
+  Serial.printf("Canvas OK free=%u\n", (unsigned)ESP.getFreeHeap());
+  return true;
 }
 
 static void selectFace(FaceId id) {
@@ -93,7 +112,11 @@ static void redraw(const struct tm &t) {
   if (!gFace) {
     return;
   }
-  gFace->render(gfx, t);
+  Arduino_GFX *target = canvas ? static_cast<Arduino_GFX *>(canvas) : display;
+  gFace->render(target, t);
+  if (canvas) {
+    canvas->flush();
+  }
 }
 
 void setup() {
@@ -104,20 +127,21 @@ void setup() {
   Serial.println("Setup: keep hotspot on, TAP ALLOW on phone");
   Serial.println("Or: s=skip Wi-Fi | t YYYY-MM-DD HH:MM:SS");
 
-  if (!gfx->begin()) {
+  if (!display->begin()) {
     Serial.println("Display init failed");
     while (true) {
       delay(1000);
     }
   }
 
-  gfx->fillScreen(BLACK);
+  display->fillScreen(BLACK);
   lastProvScreen = -1;
   showStatus("Connecting Wi-Fi...");
   TimeService::begin(showStatus);
 
-  // If still soft clock, seed from host wall clock hint via compile is weak —
-  // user can send t ... ; auto-seed today's date with local approximate if needed.
+  // Allocate frame buffer after Wi-Fi so STA stacks keep heap during connect.
+  ensureCanvas();
+
   selectFace(DEFAULT_FACE);
 
   struct tm t{};

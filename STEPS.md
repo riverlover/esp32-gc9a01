@@ -223,7 +223,22 @@ pio run -t upload
 ### Wi‑Fi 验证结论（补充）
 
 - 已通：手机热点 `WatchESP`/`12345678` + `TX=8.5dBm` + `sleep=OFF` → NTP。
-- 家宽双频 `TP-LINK_D6B1`、ESP SoftAP/BLE 配网在本板不稳定；详见 [HANDOFF.md](./HANDOFF.md)。
+- **空载家宽（2026-08-15）**：拔掉 GC9A01 后连 `TP-LINK_D6B1` → mode=0 一次成功，IP `192.168.0.109`，RSSI **-43 dBm**，NTP OK。接屏时曾对该 SSID 握手失败 → 更像外设/供电干扰，非密码问题。有载对比待做。
+- ESP SoftAP/BLE 配网在本板仍不稳定；详见 [HANDOFF.md](./HANDOFF.md)。
+
+---
+
+## 11. 空载家宽 STA 对比（2026-08-15）
+
+目的：排除「外接屏 GPIO / 杜邦线干扰」是否导致连不上家宽。
+
+1. 拔掉全部屏线，仅留 ESP32-C3 USB 供电。
+2. `config.local.h` 设 `WIFI_SSID=TP-LINK_D6B1`（密码仅本地文件）。
+3. `pio run -t upload`，串口 115200 观察。
+
+**结果**：`STA try mode=0` → `Wi-Fi OK` → `NTP OK` → `Watch OK [NTP] Calendar`（约数秒）。
+
+下一步：接回屏重复同一 SSID，确认有载是否再现握手失败。
 
 ---
 
@@ -233,6 +248,7 @@ pio run -t upload
 4. macOS 识别 USB（免驱）→ 5. 代理安装 PlatformIO →  
 6. 写 bring-up 工程 → 7. 遇 GFX 版本冲突并钉版本 → 8. 烧录成功并点亮 →  
 9. 拟真模拟表盘 → 10. 模块化多风格 + Wi‑Fi NTP →  
-11. C3 Super Mini Wi‑Fi 排障（AUTH_EXPIRE / 热点反向连接）→ 默认表盘固定 Calendar。
+11. C3 Super Mini Wi‑Fi 排障（AUTH_EXPIRE / 热点反向连接）→ 默认表盘固定 Calendar →  
+12. **拔屏空载**：家宽 `TP-LINK_D6B1` 可连且 NTP 成功（疑外设干扰）。
 
 更精简的交接信息见 [HANDOFF.md](./HANDOFF.md)。

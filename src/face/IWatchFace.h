@@ -3,7 +3,7 @@
 #include <Arduino_GFX_Library.h>
 #include <time.h>
 
-// One style = one implementation. Full redraw each second (no frame buffer).
+// One style = one implementation. Full redraw each second into Canvas (main flushes).
 class IWatchFace {
  public:
   virtual ~IWatchFace() = default;

@@ -9,7 +9,8 @@
 | 硬件接线 | 已接好并点亮 |
 | macOS 识别 | Espressif USB JTAG/serial，无需额外驱动 |
 | 工具链 | PlatformIO Core 6.1.19（`~/.platformio/penv/bin`） |
-| 固件 | 模块化表盘；**默认 Calendar(4)**；手机热点 `WatchESP` + NTP 已通 |
+| 固件 | 模块化表盘；**默认 Calendar(4)**；STA + NTP 已通 |
+| Wi‑Fi | 热点 `WatchESP` 已通；家宽 `TP-LINK_D6B1` **空载（拔屏）已通** |
 | 工程路径 | `/Users/lizhenhe/vscode/esp32-GC9A01` |
 
 ## 硬件
@@ -73,20 +74,39 @@ src/face/                    # Classic / Lume / Skeleton / Calendar
 
 ## Wi‑Fi / NTP（已验证路径）
 
-**成功组合**：手机个人热点 **`WatchESP` / `12345678`（WPA2）** → ESP STA → NTP。
+### A. 手机热点（接屏也稳）
+
+**`WatchESP` / `12345678`（WPA2）** → ESP STA → NTP。
+
+### B. 家宽空载（2026-08-15 验证）
+
+拔掉 GC9A01（仅 USB 供电、无外接屏）后连 **`TP-LINK_D6B1`**：
+
+| 项 | 结果 |
+|----|------|
+| 条件 | 空载、无杜邦线外设 |
+| mode | **0（Plain）一次成功** |
+| IP | `192.168.0.109` |
+| RSSI | **-43 dBm** |
+| NTP | OK → `Watch OK [NTP] Calendar` |
+| 耗时 | 约数秒 |
+
+密码等密钥只写在 `config.local.h`（gitignore），勿提交。
 
 ```text
 Wi-Fi OK → NTP OK → Watch OK [NTP] Calendar …
 ```
 
+**推论**：接屏时对该 SSID 的 `AUTH_EXPIRE` / `4WAY_HANDSHAKE_TIMEOUT` 更像是 **屏/杜邦线供电或 GPIO 干扰**，而非密码错或家宽完全不可用。有载对比尚未复测。
+
 RF 调参（`WifiProvision.cpp`）：`WiFi.setTxPower(WIFI_POWER_8_5dBm)` + `WiFi.setSleep(WIFI_PS_NONE)`。
 
-本地配置（勿提交）：
+本地配置示例（勿提交）：
 
 ```bash
 # src/config.local.h
-#define WIFI_SSID "WatchESP"
-#define WIFI_PASS "12345678"
+#define WIFI_SSID "TP-LINK_D6B1"   # 或 WatchESP
+#define WIFI_PASS "********"
 #define DEFAULT_FACE FaceId::Calendar
 ```
 
@@ -94,11 +114,11 @@ RF 调参（`WifiProvision.cpp`）：`WiFi.setTxPower(WIFI_POWER_8_5dBm)` + `WiF
 
 ### 踩坑（Wi‑Fi）
 
-1. `AUTH_EXPIRE(2)` / `4WAY_HANDSHAKE_TIMEOUT(15)` **≠ 一定密码错**；C3 Super Mini 上极常见（射频/功率/天线/双频路由）。
-2. 家宽 `TP-LINK_D6B1` 双频合一多次握手失败；小米 IoT 能连不代表 ESP 能连。
+1. `AUTH_EXPIRE(2)` / `4WAY_HANDSHAKE_TIMEOUT(15)` **≠ 一定密码错**；C3 Super Mini 上极常见（射频/功率/天线/双频路由/**外设干扰**）。
+2. 家宽 `TP-LINK_D6B1`：**空载可连**；接屏时曾多次握手失败。小米 IoT 能连不代表 ESP 接屏也能连。
 3. ESP SoftAP / BLE 配网在本板不可靠（SoftAP 难被手机发现；BLE WiFiProv 曾 `abort`）。
 4. 华为连 ESP 热点常失败；反向「手机开热点、ESP 去连」更稳。
-5. 社区常见修复：降功率 8.5dBm、关 sleep、专用 2.4G WPA2 SSID、拔外设空载对比供电。
+5. 排障顺序：降功率 8.5dBm、关 sleep、专用 2.4G WPA2、**拔屏空载对比**（已证实有效）。
 
 ## 常用命令
 
@@ -114,8 +134,8 @@ pio run -t upload
 ## 后续可做
 
 - 按键切面 / 断网保时（RTC）
-- 家宽单独 2.4G IoT SSID 再试 STA
-- 拔屏空载对比供电对握手的影响
+- **接回 GC9A01 有载复测** `TP-LINK_D6B1`（对照空载成功）
+- 有载仍失败时：缩短杜邦线、加近端去耦、或家宽单独 2.4G IoT SSID
 - Arduino_GFX 1.5+ 需换 pioarduino（ESP32 core 3.x）
 
 ## 其他踩坑
