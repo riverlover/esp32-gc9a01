@@ -3,6 +3,7 @@
 #include <sys/time.h>
 #include <string.h>
 #include <WiFi.h>
+#include <esp_sntp.h>
 
 #include "config.h"
 #include "wifi/WifiProvision.h"
@@ -12,6 +13,12 @@ namespace TimeService {
 static Source gSource = Source::Soft;
 static uint32_t gSoftBootMs = 0;
 static WifiProvision::StatusFn gStatus = nullptr;
+
+// Monotonic display clock: freeze wall time at sync, then advance with millis().
+// Avoids second-hand "jump back" when SNTP later steps system time.
+static bool gAnchored = false;
+static time_t gAnchorEpoch = 0;
+static uint32_t gAnchorMs = 0;
 
 static void softNow(struct tm &out) {
   const uint32_t elapsed = (millis() - gSoftBootMs) / 1000UL;
@@ -29,14 +36,30 @@ static void softNow(struct tm &out) {
   out.tm_wday = 6;
 }
 
+static void reanchorFromSystem() {
+  time_t nowSec = 0;
+  time(&nowSec);
+  if (nowSec < 1600000000L) {  // before ~2020 → not a real sync
+    return;
+  }
+  gAnchorEpoch = nowSec;
+  gAnchorMs = millis();
+  gAnchored = true;
+}
+
 static bool syncNtp() {
+  // First sync may step; after that we stop SNTP and free-run on millis.
+  sntp_set_sync_mode(SNTP_SYNC_MODE_IMMED);
   configTime(NTP_TZ_OFFSET_SEC, 0, NTP_SERVER_1, NTP_SERVER_2);
+
   struct tm t;
   for (int i = 0; i < 40; i++) {
     if (getLocalTime(&t, 500)) {
-      Serial.printf("NTP OK %04d-%02d-%02d %02d:%02d:%02d\n", t.tm_year + 1900, t.tm_mon + 1,
-                    t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
-      return true;
+      reanchorFromSystem();
+      sntp_stop();  // no periodic step corrections while the watch is running
+      Serial.printf("NTP OK %04d-%02d-%02d %02d:%02d:%02d (anchored, SNTP stopped)\n",
+                    t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
+      return gAnchored;
     }
   }
   Serial.println("NTP timeout");
@@ -46,6 +69,7 @@ static bool syncNtp() {
 void begin(WifiProvision::StatusFn status) {
   gSoftBootMs = millis();
   gSource = Source::Soft;
+  gAnchored = false;
   gStatus = status;
 
   const bool wifiOk = WifiProvision::ensureConnected(status);
@@ -76,16 +100,17 @@ bool setManualTime(int year, int month, int day, int hour, int min, int sec) {
   }
   struct timeval tv = {.tv_sec = epoch, .tv_usec = 0};
   settimeofday(&tv, nullptr);
+  reanchorFromSystem();
   gSource = Source::Manual;
   Serial.printf("Manual time %04d-%02d-%02d %02d:%02d:%02d\n", year, month, day, hour, min, sec);
-  return true;
+  return gAnchored;
 }
 
 bool now(struct tm &out) {
-  if (gSource == Source::Ntp || gSource == Source::Manual) {
-    if (getLocalTime(&out, 0)) {
-      return true;
-    }
+  if (gAnchored && (gSource == Source::Ntp || gSource == Source::Manual)) {
+    const time_t display = gAnchorEpoch + (time_t)((millis() - gAnchorMs) / 1000UL);
+    localtime_r(&display, &out);
+    return true;
   }
   softNow(out);
   return true;
