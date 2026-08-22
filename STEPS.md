@@ -224,7 +224,8 @@ pio run -t upload
 
 - 已通：手机热点 `WatchESP`/`12345678` + `TX=8.5dBm` + `sleep=OFF` → NTP。
 - **空载家宽（2026-08-15）**：拔掉 GC9A01 后连 `TP-LINK_D6B1` → mode=0 一次成功，IP `192.168.0.109`，RSSI **-43 dBm**，NTP OK。接屏时曾对该 SSID 握手失败 → 更像外设/供电干扰，非密码问题。有载对比待做。
-- ESP SoftAP/BLE 配网在本板仍不稳定；详见 [HANDOFF.md](./HANDOFF.md)。
+- SoftAP：华为连 ESP 热点仍差；手表固件继续「手机开热点」。
+- **BLE WiFiProv（2026-08-22）**：独立 env `ble-wifiprov-min` + 官方 App **已通 `GOT_IP`**。踩坑详见 [HANDOFF.md](./HANDOFF.md)「BLE / WiFiProv 踩坑详录」。
 
 ---
 
@@ -251,7 +252,8 @@ pio run -t upload
 11. C3 Super Mini Wi‑Fi 排障（AUTH_EXPIRE / 热点反向连接）→ 默认表盘固定 Calendar →  
 12. **拔屏空载**：家宽 `TP-LINK_D6B1` 可连且 NTP 成功（疑外设干扰）→  
 13. Photo 表盘 + **EC11（CLK0/DT1/SW5）悬浮预览切面**（静态黑底、按键 Toast）→  
-14. **Settings 高频菜单**（Face / Sync / TZ / Wi‑Fi / About）。
+14. **Settings 高频菜单**（Face / Sync / TZ / Wi‑Fi / About）→  
+15. **官方 WiFiProv BLE**（`ble-wifiprov-min`）实机 `GOT_IP`；定位 BLE+`WIFI_PS_NONE`→abort。
 
 更精简的交接信息见 [HANDOFF.md](./HANDOFF.md)。
 
@@ -291,3 +293,41 @@ pio run -t upload
 | Wi‑Fi | 显示 SSID/RSSI；Reconnect = 等手机热点（阻塞） |
 | About | heap / 时间源 / IP |
 | 退出 | 根菜单 Back、长按返回、或 15s 空闲 |
+
+---
+
+## 14. 官方 WiFiProv BLE 最小试验（2026-08-22）
+
+**目标**：验证 Espressif「ESP BLE Provisioning」App 能否给本板配网（历史曾 abort）。
+
+### 烧录
+
+```bash
+pio run -e ble-wifiprov-min -t upload
+# 串口应见 === ble-wifiprov-min === 与 PROV_START
+```
+
+| 项 | 值 |
+|----|-----|
+| 分支 | `feat/ble-wifiprov` |
+| 源码 | `src/ble_prov_main.cpp` + `src/vendor/ricmoo_qrcode/` |
+| 设备名 / PoP | `PROV_GC9A01` / `12345678` |
+| 结果 | App 配网 + **扫屏上 QR** 成功 → **`GOT_IP`**；屏显 SSID/IP |
+
+### 手机步骤摘要
+
+1. **扫屏上二维码**，或无二维码选 `PROV_GC9A01`。  
+2. PoP（手动时）填 **`12345678`**（勿用 `abcd1234`）。  
+3. 选 **2.4G**；列表空时可刷新或手填 SSID。  
+4. 「Authentication failed」多为 STA `reason=2`，可先试热点 `WatchESP`。
+
+### 关键踩坑（务必读）
+
+完整条目在 [HANDOFF.md](./HANDOFF.md)「BLE / WiFiProv 踩坑详录」。最关键：
+
+1. 必须 `WiFiProv.beginProvision(SCHEME_BLE)+PoP`，不能只开 BLE。  
+2. **BLE 仍开启时禁止 `WiFi.setSleep(WIFI_PS_NONE)`** → IDF 直接 `abort()`。  
+3. `ble-wifiprov-min` 需 `lib_ignore = QRCode`；屏 QR 用 `src/vendor/ricmoo_qrcode/`。  
+4. **QR 必须 ≥ v5**（约 81 字节载荷）；过小 version 会生成损坏码（库不报错）。须含 `"security":1`；正方形须落在圆内（≤≈156px 外框）。
+
+手表稳定固件仍用：`pio run -e esp32-c3-supermini -t upload`（或 `git checkout v0.2.0`）。

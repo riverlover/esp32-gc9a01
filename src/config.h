@@ -31,9 +31,10 @@
 #define WIFI_CONNECT_TIMEOUT_MS 20000
 #endif
 
-// BLE Wi-Fi provisioning (Espressif "ESP BLE Provisioning" app)
+// BLE Wi-Fi provisioning (Espressif "ESP BLE Provisioning" app).
+// Default name uses PROV_ prefix (App discovery). Wired in env:ble-wifiprov-min only.
 #ifndef PROV_SERVICE_NAME
-#define PROV_SERVICE_NAME "GC9A01-Setup"
+#define PROV_SERVICE_NAME "PROV_GC9A01"
 #endif
 #ifndef PROV_POP
 #define PROV_POP "12345678"
