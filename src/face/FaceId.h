@@ -32,3 +32,9 @@ inline FaceId nextFace(FaceId id) {
   const uint8_t n = (static_cast<uint8_t>(id) + 1) % static_cast<uint8_t>(FaceId::Count);
   return static_cast<FaceId>(n);
 }
+
+inline FaceId prevFace(FaceId id) {
+  const uint8_t count = static_cast<uint8_t>(FaceId::Count);
+  const uint8_t n = (static_cast<uint8_t>(id) + count - 1) % count;
+  return static_cast<FaceId>(n);
+}

@@ -7,6 +7,7 @@
 #include "face/FaceId.h"
 #include "face/FaceRegistry.h"
 #include "face/IWatchFace.h"
+#include "input/Ec11.h"
 #include "pins.h"
 #include "time/TimeService.h"
 #include "ui/ProvQr.h"
@@ -16,11 +17,16 @@ Arduino_GFX *display = new Arduino_GC9A01(bus, TFT_RST, 0 /* rotation */, true /
 // Off-screen RGB565 buffer (~112KB). Faces draw here, then flush once — no black flash.
 static Arduino_Canvas *canvas = nullptr;
 
-static FaceId gFaceId = DEFAULT_FACE;
+static FaceId gFaceId = DEFAULT_FACE;       // currently shown (may be preview)
+static FaceId gCommittedFace = DEFAULT_FACE;
 static IWatchFace *gFace = nullptr;
 static int lastDrawnSecond = -1;
 static bool forceRedraw = true;
 static int lastProvScreen = -1;
+static bool gPreview = false;
+static uint32_t gPreviewSinceMs = 0;
+
+static constexpr uint32_t kPreviewAutoCommitMs = 4000;
 
 static void showStatus(const char *msg) {
   Serial.printf("[UI] %s\n", msg);
@@ -47,11 +53,52 @@ static bool ensureCanvas() {
   return true;
 }
 
-static void selectFace(FaceId id) {
+static void selectFace(FaceId id, bool preview) {
   gFaceId = id;
   gFace = getFace(id);
   forceRedraw = true;
-  Serial.printf("Face -> %s (%u)\n", faceName(id), static_cast<unsigned>(id));
+  gPreview = preview;
+  if (preview) {
+    gPreviewSinceMs = millis();
+    Serial.printf("Face preview -> %s (%u)\n", faceName(id), static_cast<unsigned>(id));
+  } else {
+    gCommittedFace = id;
+    Serial.printf("Face -> %s (%u)\n", faceName(id), static_cast<unsigned>(id));
+  }
+}
+
+static void commitFace() {
+  if (!gPreview && gFaceId == gCommittedFace) {
+    Serial.printf("Face OK %s\n", faceName(gFaceId));
+    return;
+  }
+  gPreview = false;
+  gCommittedFace = gFaceId;
+  forceRedraw = true;
+  Serial.printf("Face confirm -> %s (%u)\n", faceName(gFaceId), static_cast<unsigned>(gFaceId));
+}
+
+static void handleEncoder() {
+  int8_t rot = Ec11::takeRotation();
+  while (rot > 0) {
+    selectFace(nextFace(gFaceId), true);
+    --rot;
+  }
+  while (rot < 0) {
+    selectFace(prevFace(gFaceId), true);
+    ++rot;
+  }
+
+  if (Ec11::takeShortPress()) {
+    commitFace();
+  }
+  if (Ec11::takeLongPress()) {
+    Serial.println("Long press: settings (TODO)");
+  }
+
+  if (gPreview && (millis() - gPreviewSinceMs) >= kPreviewAutoCommitMs) {
+    commitFace();
+  }
 }
 
 static void handleSerialLine(String line) {
@@ -60,11 +107,11 @@ static void handleSerialLine(String line) {
     return;
   }
   if (line.equalsIgnoreCase("n")) {
-    selectFace(nextFace(gFaceId));
+    selectFace(nextFace(gFaceId), false);
     return;
   }
   if (line.length() == 1 && line[0] >= '1' && line[0] <= '5') {
-    selectFace(static_cast<FaceId>(line[0] - '1'));
+    selectFace(static_cast<FaceId>(line[0] - '1'), false);
     return;
   }
   if (line.equalsIgnoreCase("p")) {
@@ -88,6 +135,7 @@ static void handleSerialLine(String line) {
   }
   if (line.equalsIgnoreCase("h") || line == "?") {
     Serial.println("Keys: 1-5 faces | n next | p hotspot | t YYYY-MM-DD HH:MM:SS");
+    Serial.println("EC11: turn=preview face | short=confirm | long=settings(TODO)");
     Serial.println("Setup: w SSID PASS | s skip Wi-Fi");
   }
 }
@@ -126,6 +174,7 @@ void setup() {
   Serial.println("GC9A01 modular watch");
   Serial.println("Setup: keep hotspot on, TAP ALLOW on phone");
   Serial.println("Or: s=skip Wi-Fi | t YYYY-MM-DD HH:MM:SS");
+  Serial.println("EC11: turn=preview | short=confirm | long=settings(TODO)");
 
   if (!display->begin()) {
     Serial.println("Display init failed");
@@ -142,7 +191,8 @@ void setup() {
   // Allocate frame buffer after Wi-Fi so STA stacks keep heap during connect.
   ensureCanvas();
 
-  selectFace(DEFAULT_FACE);
+  Ec11::begin();
+  selectFace(DEFAULT_FACE, false);
 
   struct tm t{};
   TimeService::now(t);
@@ -156,12 +206,14 @@ void setup() {
 
 void loop() {
   handleSerial();
+  Ec11::poll();
+  handleEncoder();
 
   struct tm t{};
   TimeService::now(t);
 
   if (!forceRedraw && t.tm_sec == lastDrawnSecond) {
-    delay(20);
+    delay(5);  // keep encoder responsive
     return;
   }
 

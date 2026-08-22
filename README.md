@@ -4,9 +4,10 @@ ESP32-C3 Super Mini 驱动 1.28" GC9A01（240×240）圆形 TFT，实现模块�
 
 ## 功能
 
-- 四种表盘：Classic / Lume / Skeleton / **Calendar**（默认）
+- 五种表盘：Classic / Lume / Skeleton / Calendar / **Photo**（默认）
 - Wi‑Fi STA 连接 + NTP 校时（默认东八区）
 - 离屏 Canvas 双缓冲，减轻秒针刷新闪烁
+- **EC11 旋钮**：旋转预览切面、短按确认、长按预留设置
 - 串口切换表盘、手动校时、跳过/重试配网
 
 ## 硬件
@@ -15,6 +16,7 @@ ESP32-C3 Super Mini 驱动 1.28" GC9A01（240×240）圆形 TFT，实现模块�
 |------|------|
 | MCU | ESP32-C3 Super Mini（USB-C） |
 | 屏 | 1.28" TFT 240×240，驱动 IC **GC9A01** |
+| 旋钮 | EC11 旋转编码器（CLK / DT / SW） |
 | 连接 | 杜邦线母对母 |
 
 ### 接线（与 `src/pins.h` 一致）
@@ -28,6 +30,14 @@ ESP32-C3 Super Mini 驱动 1.28" GC9A01（240×240）圆形 TFT，实现模块�
 | DC | **2** | 绿 |
 | CS | **10** | 蓝 |
 | RST | **3** | 紫 |
+
+| EC11 | ESP32-C3 |
+|------|----------|
+| CLK | **0** |
+| DT | **1** |
+| SW | **5** |
+| + | **3.3** |
+| GND | **G** |
 
 信号脚可改，但必须与代码宏一致。尽量避开 GPIO 8/9（启动相关）。
 
@@ -83,15 +93,25 @@ Wi-Fi OK → NTP OK → Watch OK [NTP] Calendar …
 | `1` | Classic | 经典指针 |
 | `2` | Lume | 夜光风格 |
 | `3` | Skeleton | 镂空 |
-| `4` | Calendar | 日历窗（默认） |
+| `4` | Calendar | 日历窗 |
+| `5` | Photo | 照片背景（默认） |
 
-编译期默认：`DEFAULT_FACE`（见 `src/config.h` / `config.local.h`）。运行期串口发 `1`–`4` 或 `n` 切换。
+编译期默认：`DEFAULT_FACE`（见 `src/config.h` / `config.local.h`）。运行期串口发 `1`–`5` 或 `n` 切换；也可用 EC11。
+
+## EC11 操作
+
+| 操作 | 作用 |
+|------|------|
+| 旋转 | 预览上一张 / 下一张表盘 |
+| 短按 | 确认当前预览 |
+| 停转约 4s | 自动确认 |
+| 长按 | 设置菜单（预留） |
 
 ## 串口命令
 
 | 命令 | 作用 |
 |------|------|
-| `1`–`4` / `n` | 选表盘 / 下一个 |
+| `1`–`5` / `n` | 选表盘 / 下一个 |
 | `w SSID PASS` | 设置 Wi‑Fi 并连接 |
 | `s` | 跳过 Wi‑Fi（软时钟） |
 | `t YYYY-MM-DD HH:MM:SS` | 手动校时 |
@@ -101,14 +121,15 @@ Wi-Fi OK → NTP OK → Watch OK [NTP] Calendar …
 ## 工程结构
 
 ```text
-src/main.cpp           # 编排与串口命令
+src/main.cpp           # 编排与串口 / EC11
 src/config.h           # 默认配置
 src/config.local.h     # 本地密钥（gitignore）
-src/pins.h             # GC9A01 引脚
+src/pins.h             # GC9A01 + EC11 引脚
+src/input/             # EC11 正交解码与按键
 src/time/              # NTP / Soft / Manual
 src/wifi/              # STA 连接与 RF 调参
 src/ui/                # 配网提示 / 二维码
-src/face/              # Classic / Lume / Skeleton / Calendar
+src/face/              # Classic / Lume / Skeleton / Calendar / Photo
 ```
 
 ## 文档

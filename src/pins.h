@@ -7,3 +7,8 @@
 #define TFT_CS   10
 #define TFT_DC   2
 #define TFT_RST  3
+
+// EC11 rotary encoder: CLK->0  DT->1  SW->5  +->3.3  GND->G
+#define ENC_CLK 0
+#define ENC_DT  1
+#define ENC_SW  5

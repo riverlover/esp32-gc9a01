@@ -249,6 +249,21 @@ pio run -t upload
 6. 写 bring-up 工程 → 7. 遇 GFX 版本冲突并钉版本 → 8. 烧录成功并点亮 →  
 9. 拟真模拟表盘 → 10. 模块化多风格 + Wi‑Fi NTP →  
 11. C3 Super Mini Wi‑Fi 排障（AUTH_EXPIRE / 热点反向连接）→ 默认表盘固定 Calendar →  
-12. **拔屏空载**：家宽 `TP-LINK_D6B1` 可连且 NTP 成功（疑外设干扰）。
+12. **拔屏空载**：家宽 `TP-LINK_D6B1` 可连且 NTP 成功（疑外设干扰）→  
+13. Photo 表盘 + **EC11（CLK0/DT1/SW5）旋转切面**。
 
 更精简的交接信息见 [HANDOFF.md](./HANDOFF.md)。
+
+---
+
+## 12. EC11 旋钮切面（2026-08-22）
+
+接线（与屏共用 3.3 / GND）：
+
+| EC11 | GPIO |
+|------|------|
+| CLK | 0 |
+| DT | 1 |
+| SW | 5 |
+
+固件：`src/input/Ec11.*` + `main` 旋转预览 / 短按确认 / 长按预留。串口见 `EC11 OK CLK=0 DT=1 SW=5`。

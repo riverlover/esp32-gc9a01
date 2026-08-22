@@ -9,7 +9,7 @@
 | 硬件接线 | 已接好并点亮 |
 | macOS 识别 | Espressif USB JTAG/serial，无需额外驱动 |
 | 工具链 | PlatformIO Core 6.1.19（`~/.platformio/penv/bin`） |
-| 固件 | 模块化表盘；**默认 Calendar(4)**；STA + NTP 已通 |
+| 固件 | 模块化表盘；**默认 Photo(5)**；STA + NTP 已通；**EC11 切面已接** |
 | Wi‑Fi | 热点 `WatchESP` 已通；家宽 `TP-LINK_D6B1` **空载（拔屏）已通** |
 | 工程路径 | `/Users/lizhenhe/vscode/esp32-GC9A01` |
 
@@ -33,6 +33,18 @@
 
 说明：信号脚可改，但必须与代码宏一致。尽量避开 GPIO 8/9（启动相关）。
 
+### EC11（与 `src/pins.h` 一致）
+
+| EC11 | ESP32-C3 |
+|------|----------|
+| CLK | **0** |
+| DT | **1** |
+| SW | **5** |
+| + | **3.3** |
+| GND | **G** |
+
+交互：旋转预览切面 → 短按确认（停转约 4s 自动确认）→ 长按预留设置。驱动：`src/input/Ec11.*`。
+
 ### 屏 PCB 备注
 
 板上有「此模块可不接 CS、RST」字样；本工程仍接全，驱动更省事。
@@ -49,15 +61,16 @@
 ## 工程结构
 
 ```
-src/main.cpp                 # 编排 / 串口命令
-src/config.h                 # 默认；DEFAULT_FACE=Calendar
+src/main.cpp                 # 编排 / 串口 / EC11
+src/config.h                 # 默认；DEFAULT_FACE=Photo
 src/config.local.h           # gitignore：Wi‑Fi 与可选覆盖
 src/config.local.h.example
-src/pins.h
+src/pins.h                   # 屏 + EC11
+src/input/Ec11.*             # 旋钮正交解码 + 按键消抖
 src/time/TimeService.*       # NTP / Soft / Manual
 src/wifi/WifiProvision.*     # STA 连接（8.5dBm、关省电、多 mode 重试）
 src/ui/ProvQr.*              # 配网提示 / 二维码（历史 SoftAP 用）
-src/face/                    # Classic / Lume / Skeleton / Calendar
+src/face/                    # Classic / Lume / Skeleton / Calendar / Photo
 ```
 
 ## 表盘
@@ -67,10 +80,11 @@ src/face/                    # Classic / Lume / Skeleton / Calendar
 | 1 | Classic | 经典指针 |
 | 2 | Lume | 夜光 |
 | 3 | Skeleton | 镂空 |
-| **4** | **Calendar** | **日历窗（当前默认）** |
+| 4 | Calendar | 日历窗 |
+| **5** | **Photo** | **照片背景（当前默认）** |
 
-- 编译期：`#define DEFAULT_FACE FaceId::Calendar`
-- 运行期：串口 `1`–`4` / `n`
+- 编译期：`#define DEFAULT_FACE FaceId::Photo`
+- 运行期：串口 `1`–`5` / `n`，或 EC11 旋转/短按
 
 ## Wi‑Fi / NTP（已验证路径）
 
@@ -133,7 +147,8 @@ pio run -t upload
 
 ## 后续可做
 
-- 按键切面 / 断网保时（RTC）
+- EC11：预览缩小悬浮视觉、短按/长按屏上反馈、长按设置菜单
+- Calendar / Photo 表盘专用旋钮交互；断网保时（RTC）
 - **接回 GC9A01 有载复测** `TP-LINK_D6B1`（对照空载成功）
 - 有载仍失败时：缩短杜邦线、加近端去耦、或家宽单独 2.4G IoT SSID
 - Arduino_GFX 1.5+ 需换 pioarduino（ESP32 core 3.x）
