@@ -19,4 +19,9 @@ bool now(struct tm &out);
 Source source();
 const char *sourceName();
 
+// Settings: re-sync NTP (needs Wi-Fi). Adjusts runtime TZ in whole hours.
+bool syncNtpNow();
+int tzOffsetHours();
+void setTzOffsetHours(int hours);
+
 }  // namespace TimeService

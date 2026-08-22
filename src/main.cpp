@@ -11,6 +11,7 @@
 #include "pins.h"
 #include "time/TimeService.h"
 #include "ui/ProvQr.h"
+#include "ui/Settings.h"
 
 Arduino_DataBus *bus = new Arduino_ESP32SPI(TFT_DC, TFT_CS, TFT_SCLK, TFT_MOSI, -1);
 Arduino_GFX *display = new Arduino_GC9A01(bus, TFT_RST, 0 /* rotation */, true /* IPS */);
@@ -25,6 +26,7 @@ static bool forceRedraw = true;
 static int lastProvScreen = -1;
 static bool gPreview = false;
 static uint32_t gPreviewSinceMs = 0;
+static bool gSettingsDirty = false;
 
 static const char *gToast = nullptr;
 static uint32_t gToastUntilMs = 0;
@@ -64,7 +66,6 @@ static bool ensureCanvas() {
 }
 
 static void clearToastRegion() {
-  // Toast is drawn near y=200; wipe a band without re-scaling preview.
   display->fillRect(20, 196, 200, 20, BLACK);
 }
 
@@ -87,8 +88,7 @@ static void drawToastOverlay(Arduino_GFX *gfx) {
 static void showToast(const char *msg, uint32_t ms = 1200) {
   gToast = msg;
   gToastUntilMs = millis() + ms;
-  if (gPreview) {
-    // Keep preview FB static — only paint toast on top.
+  if (gPreview || Settings::active()) {
     drawToastOverlay(display);
   } else {
     forceRedraw = true;
@@ -105,7 +105,6 @@ static void ensurePreviewMap() {
   gPreviewMapReady = true;
 }
 
-// One-shot scale blit: black bg + shrink. Uses TFT bulk write (single window).
 static void flushPreviewFloating() {
   if (!canvas) {
     return;
@@ -178,29 +177,63 @@ static void commitFace() {
   Serial.printf("Face confirm -> %s (%u)\n", faceName(gFaceId), static_cast<unsigned>(gFaceId));
 }
 
-static void handleEncoder() {
-  int8_t rot = Ec11::takeRotation();
-  while (rot > 0) {
-    selectFace(nextFace(gFaceId), true);
-    --rot;
+static FaceId settingsGetFace() { return gCommittedFace; }
+
+static void settingsSetFace(FaceId id) {
+  selectFace(id, false);
+  gPreview = false;
+}
+
+static void openSettings() {
+  if (gPreview) {
+    // Drop unsaved preview; keep last committed face.
+    gPreview = false;
+    selectFace(gCommittedFace, false);
   }
-  while (rot < 0) {
-    selectFace(prevFace(gFaceId), true);
-    ++rot;
+  gToast = nullptr;
+  Settings::open();
+  gSettingsDirty = true;
+}
+
+static void handleEncoder() {
+  const int8_t rot = Ec11::takeRotation();
+  const bool shortPress = Ec11::takeShortPress();
+  const bool longPress = Ec11::takeLongPress();
+
+  if (Settings::active()) {
+    const bool wasOn = true;
+    if (Settings::handleInput(rot, shortPress, longPress)) {
+      gSettingsDirty = true;
+    }
+    if (wasOn && !Settings::active()) {
+      forceRedraw = true;
+      showToast("Watch");
+    }
+    return;
   }
 
-  if (Ec11::takeShortPress()) {
+  // Idle timeout / no-op poll for settings when closed — n/a
+
+  int8_t r = rot;
+  while (r > 0) {
+    selectFace(nextFace(gFaceId), true);
+    --r;
+  }
+  while (r < 0) {
+    selectFace(prevFace(gFaceId), true);
+    ++r;
+  }
+
+  if (shortPress) {
     if (gPreview) {
       commitFace();
     } else {
-      // Not browsing: short press still acknowledges / can open peek later.
       showToast(faceName(gFaceId));
       Serial.printf("EC11 short @ %s\n", faceName(gFaceId));
     }
   }
-  if (Ec11::takeLongPress()) {
-    showToast("Settings...");
-    Serial.println("Long press: settings (TODO)");
+  if (longPress) {
+    openSettings();
   }
 
   if (gPreview && (millis() - gPreviewSinceMs) >= kPreviewAutoCommitMs) {
@@ -229,7 +262,6 @@ static void handleSerialLine(String line) {
     return;
   }
   if (line.startsWith("t ") || line.startsWith("T ")) {
-    // t 2026-08-15 21:20:00
     int y, mo, d, h, mi, s;
     if (sscanf(line.c_str() + 2, "%d-%d-%d %d:%d:%d", &y, &mo, &d, &h, &mi, &s) == 6) {
       if (TimeService::setManualTime(y, mo, d, h, mi, s)) {
@@ -241,14 +273,14 @@ static void handleSerialLine(String line) {
     return;
   }
   if (line.equalsIgnoreCase("e")) {
-    Serial.printf("EC11 SW raw=%u activeLow=%d preview=%d face=%s committed=%s\n",
+    Serial.printf("EC11 SW raw=%u activeLow=%d preview=%d settings=%d face=%s\n",
                   (unsigned)Ec11::swRawLevel(), Ec11::swActiveLow() ? 1 : 0, gPreview ? 1 : 0,
-                  faceName(gFaceId), faceName(gCommittedFace));
+                  Settings::active() ? 1 : 0, faceName(gFaceId));
     return;
   }
   if (line.equalsIgnoreCase("h") || line == "?") {
     Serial.println("Keys: 1-5 faces | n next | p hotspot | t YYYY-MM-DD HH:MM:SS | e EC11");
-    Serial.println("EC11: turn=float preview | short=confirm | long=settings(TODO)");
+    Serial.println("EC11: turn=preview | short=confirm | long=Settings");
     Serial.println("Setup: w SSID PASS | s skip Wi-Fi");
   }
 }
@@ -299,7 +331,7 @@ void setup() {
   Serial.println("GC9A01 modular watch");
   Serial.println("Setup: keep hotspot on, TAP ALLOW on phone");
   Serial.println("Or: s=skip Wi-Fi | t YYYY-MM-DD HH:MM:SS");
-  Serial.println("EC11: turn=float preview | short=confirm | long=settings(TODO)");
+  Serial.println("EC11: turn=preview | short=confirm | long=Settings");
 
   if (!display->begin()) {
     Serial.println("Display init failed");
@@ -313,10 +345,10 @@ void setup() {
   showStatus("Connecting Wi-Fi...");
   TimeService::begin(showStatus);
 
-  // Allocate frame buffer after Wi-Fi so STA stacks keep heap during connect.
   ensureCanvas();
 
   Ec11::begin();
+  Settings::begin(Settings::Hooks{settingsGetFace, settingsSetFace});
   selectFace(DEFAULT_FACE, false);
 
   struct tm t{};
@@ -325,8 +357,8 @@ void setup() {
   lastDrawnSecond = t.tm_sec;
   forceRedraw = false;
 
-  Serial.printf("Watch OK [%s] %s %02d:%02d:%02d\n", TimeService::sourceName(), gFace->name(),
-                t.tm_hour, t.tm_min, t.tm_sec);
+  Serial.printf("Watch OK [%s] %s %02d:%02d:%02d tz=UTC%+d\n", TimeService::sourceName(),
+                gFace->name(), t.tm_hour, t.tm_min, t.tm_sec, TimeService::tzOffsetHours());
 }
 
 void loop() {
@@ -334,7 +366,21 @@ void loop() {
   Ec11::poll();
   handleEncoder();
 
-  // Preview: freeze frame — no per-second refresh (avoids scale-blit jitter).
+  // Settings UI: redraw only on input / open; still poll idle-exit via handleInput(0).
+  if (Settings::active()) {
+    if (Settings::handleInput(0, false, false)) {
+      gSettingsDirty = true;
+    }
+    if (!Settings::active()) {
+      forceRedraw = true;
+    } else if (gSettingsDirty) {
+      Settings::draw(display);
+      gSettingsDirty = false;
+    }
+    delay(2);
+    return;
+  }
+
   if (gPreview) {
     const bool toastAlive = gToast && millis() <= gToastUntilMs;
     static bool toastWasAlive = false;
@@ -360,7 +406,7 @@ void loop() {
   const bool toastAlive = gToast && millis() <= gToastUntilMs;
   static bool toastWasAlive = false;
   if (toastWasAlive && !toastAlive) {
-    forceRedraw = true;  // clear toast pixels
+    forceRedraw = true;
   }
   toastWasAlive = toastAlive;
 

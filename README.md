@@ -7,7 +7,7 @@ ESP32-C3 Super Mini 驱动 1.28" GC9A01（240×240）圆形 TFT，实现模块�
 - 五种表盘：Classic / Lume / Skeleton / Calendar / **Photo**（默认）
 - Wi‑Fi STA 连接 + NTP 校时（默认东八区）
 - 离屏 Canvas 双缓冲，减轻秒针刷新闪烁
-- **EC11 旋钮**：黑底缩小悬浮预览、短按确认、长按预留设置
+- **EC11 旋钮**：黑底缩小悬浮预览、短按确认、**长按进 Settings**
 - 串口切换表盘、手动校时、跳过/重试配网
 
 ## 硬件
@@ -105,9 +105,27 @@ Wi-Fi OK → NTP OK → Watch OK [NTP] Calendar …
 | 旋转 | **缩小悬浮预览**（约 82%、黑底、静态冻结）上一张 / 下一张 |
 | 短按 | 确认当前预览 → 全屏；屏上 Toast |
 | 停转约 4s | 自动确认 |
-| 长按 | Toast「Settings...」（菜单预留） |
+| 长按 | 进入 **Settings** |
 
-预览期间不按秒刷新，避免缩放重绘抖动。串口 `e` 可查看 SW 电平 / 极性。
+预览期间不按秒刷新。串口 `e` 可查看 SW 电平 / 极性。
+
+### Settings（长按）
+
+| 手势 | 作用 |
+|------|------|
+| 旋转 | 上下选项；Timezone 页加减 `UTC±N` |
+| 短按 | 进入 / 执行 / 选表盘 |
+| 长按 | 返回上一级；根菜单则退出 |
+| 15s 无操作 | 自动退出 |
+
+| 菜单项 | 说明 |
+|--------|------|
+| Face | 选表盘并立即生效 |
+| Sync | 立即 NTP 校时（需 Wi‑Fi） |
+| Timezone | 运行时区 UTC−12…+14 |
+| Wi‑Fi | 状态 / Reconnect（等手机热点，会阻塞） |
+| About | heap、时间源、IP |
+| Back | 退出 |
 
 ## 串口命令
 
@@ -124,14 +142,14 @@ Wi-Fi OK → NTP OK → Watch OK [NTP] Calendar …
 ## 工程结构
 
 ```text
-src/main.cpp           # 编排与串口 / EC11
+src/main.cpp           # 编排与串口 / EC11 / Settings
 src/config.h           # 默认配置
 src/config.local.h     # 本地密钥（gitignore）
 src/pins.h             # GC9A01 + EC11 引脚
 src/input/             # EC11 正交解码与按键
-src/time/              # NTP / Soft / Manual
+src/time/              # NTP / Soft / Manual / 时区
 src/wifi/              # STA 连接与 RF 调参
-src/ui/                # 配网提示 / 二维码
+src/ui/                # 配网提示 / Settings
 src/face/              # Classic / Lume / Skeleton / Calendar / Photo
 ```
 

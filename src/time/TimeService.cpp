@@ -19,6 +19,7 @@ static WifiProvision::StatusFn gStatus = nullptr;
 static bool gAnchored = false;
 static time_t gAnchorEpoch = 0;
 static uint32_t gAnchorMs = 0;
+static int gTzSec = NTP_TZ_OFFSET_SEC;
 
 static void softNow(struct tm &out) {
   const uint32_t elapsed = (millis() - gSoftBootMs) / 1000UL;
@@ -50,7 +51,7 @@ static void reanchorFromSystem() {
 static bool syncNtp() {
   // First sync may step; after that we stop SNTP and free-run on millis.
   sntp_set_sync_mode(SNTP_SYNC_MODE_IMMED);
-  configTime(NTP_TZ_OFFSET_SEC, 0, NTP_SERVER_1, NTP_SERVER_2);
+  configTime(gTzSec, 0, NTP_SERVER_1, NTP_SERVER_2);
 
   struct tm t;
   for (int i = 0; i < 40; i++) {
@@ -70,6 +71,7 @@ void begin(WifiProvision::StatusFn status) {
   gSoftBootMs = millis();
   gSource = Source::Soft;
   gAnchored = false;
+  gTzSec = NTP_TZ_OFFSET_SEC;
   gStatus = status;
 
   const bool wifiOk = WifiProvision::ensureConnected(status);
@@ -127,6 +129,38 @@ const char *sourceName() {
     default:
       return "Soft";
   }
+}
+
+bool syncNtpNow() {
+  if (!WifiProvision::isConnected()) {
+    Serial.println("NTP sync: no Wi-Fi");
+    return false;
+  }
+  if (syncNtp()) {
+    gSource = Source::Ntp;
+    return true;
+  }
+  return false;
+}
+
+int tzOffsetHours() { return gTzSec / 3600; }
+
+void setTzOffsetHours(int hours) {
+  if (hours < -12) {
+    hours = -12;
+  }
+  if (hours > 14) {
+    hours = 14;
+  }
+  const int newSec = hours * 3600;
+  if (newSec == gTzSec) {
+    return;
+  }
+  if (gAnchored) {
+    gAnchorEpoch += (time_t)(newSec - gTzSec);
+  }
+  gTzSec = newSec;
+  Serial.printf("TZ -> UTC%+d\n", hours);
 }
 
 }  // namespace TimeService

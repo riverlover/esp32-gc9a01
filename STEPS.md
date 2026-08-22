@@ -250,7 +250,8 @@ pio run -t upload
 9. 拟真模拟表盘 → 10. 模块化多风格 + Wi‑Fi NTP →  
 11. C3 Super Mini Wi‑Fi 排障（AUTH_EXPIRE / 热点反向连接）→ 默认表盘固定 Calendar →  
 12. **拔屏空载**：家宽 `TP-LINK_D6B1` 可连且 NTP 成功（疑外设干扰）→  
-13. Photo 表盘 + **EC11（CLK0/DT1/SW5）悬浮预览切面**（静态黑底、按键 Toast）。
+13. Photo 表盘 + **EC11（CLK0/DT1/SW5）悬浮预览切面**（静态黑底、按键 Toast）→  
+14. **Settings 高频菜单**（Face / Sync / TZ / Wi‑Fi / About）。
 
 更精简的交接信息见 [HANDOFF.md](./HANDOFF.md)。
 
@@ -271,7 +272,22 @@ pio run -t upload
 | 行为 | 说明 |
 |------|------|
 | 旋转 | 黑底、约 82% 缩小悬浮预览；**静态冻结**（不按秒刷新） |
-| 短按 / 长按 | 确认全屏 / Settings Toast；SW 自动判极性 |
+| 短按 / 长按 | 确认全屏 / **进 Settings**；SW 自动判极性 |
 | 性能 | 预览缩放用 TFT `writeAddrWindow` + `writePixels` 批量写出 |
 
 串口：`EC11 OK …`；诊断命令 `e`。
+
+---
+
+## 13. Settings 高频菜单（2026-08-22）
+
+长按旋钮进入；`src/ui/Settings.*`。
+
+| 项 | 行为 |
+|----|------|
+| Face | 列表选面，立即 commit |
+| Sync | `TimeService::syncNtpNow()` |
+| Timezone | 旋转调 `UTC±N`（−12…+14） |
+| Wi‑Fi | 显示 SSID/RSSI；Reconnect = 等手机热点（阻塞） |
+| About | heap / 时间源 / IP |
+| 退出 | 根菜单 Back、长按返回、或 15s 空闲 |

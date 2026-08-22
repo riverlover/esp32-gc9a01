@@ -9,7 +9,7 @@
 | 硬件接线 | 已接好并点亮 |
 | macOS 识别 | Espressif USB JTAG/serial，无需额外驱动 |
 | 工具链 | PlatformIO Core 6.1.19（`~/.platformio/penv/bin`） |
-| 固件 | 模块化表盘；**默认 Photo(5)**；STA + NTP；**EC11 悬浮预览切面已通** |
+| 固件 | 模块化表盘；**默认 Photo(5)**；STA + NTP；**EC11 预览切面 + Settings 已通** |
 | Wi‑Fi | 热点 `WatchESP` 已通；家宽 `TP-LINK_D6B1` **空载（拔屏）已通** |
 | 工程路径 | `/Users/lizhenhe/vscode/esp32-GC9A01` |
 
@@ -43,8 +43,10 @@
 | + | **3.3** |
 | GND | **G** |
 
-交互：旋转 → **黑底缩小悬浮预览**（静态冻结）→ 短按确认全屏（停转约 4s 自动确认）→ 长按 Toast 预留设置。  
-SW 上电自动判极性；串口 `e` 诊断。驱动：`src/input/Ec11.*`。
+交互：旋转 → **黑底缩小悬浮预览**（静态冻结）→ 短按确认全屏（停转约 4s 自动确认）→ **长按进 Settings**。  
+SW 上电自动判极性；串口 `e` 诊断。驱动：`src/input/Ec11.*`；菜单：`src/ui/Settings.*`。
+
+Settings 高频项：Face / Sync(NTP) / Timezone / Wi‑Fi / About；旋钮滚、短按进、长按返回；15s 空闲退出。
 
 ### 屏 PCB 备注
 
@@ -62,15 +64,16 @@ SW 上电自动判极性；串口 `e` 诊断。驱动：`src/input/Ec11.*`。
 ## 工程结构
 
 ```
-src/main.cpp                 # 编排 / 串口 / EC11
+src/main.cpp                 # 编排 / 串口 / EC11 / Settings
 src/config.h                 # 默认；DEFAULT_FACE=Photo
 src/config.local.h           # gitignore：Wi‑Fi 与可选覆盖
 src/config.local.h.example
 src/pins.h                   # 屏 + EC11
 src/input/Ec11.*             # 旋钮正交解码 + 按键消抖
-src/time/TimeService.*       # NTP / Soft / Manual
+src/time/TimeService.*       # NTP / Soft / Manual / 运行时区
 src/wifi/WifiProvision.*     # STA 连接（8.5dBm、关省电、多 mode 重试）
 src/ui/ProvQr.*              # 配网提示 / 二维码（历史 SoftAP 用）
+src/ui/Settings.*            # 长按设置菜单
 src/face/                    # Classic / Lume / Skeleton / Calendar / Photo
 ```
 
@@ -148,8 +151,9 @@ pio run -t upload
 
 ## 后续可做
 
-- EC11 长按设置菜单（时区 / 配网 / 亮度）
+- Settings：亮度 / 休眠（需背光硬件）；Wi‑Fi Reconnect 非阻塞化
 - Calendar / Photo 表盘专用旋钮交互；断网保时（RTC）
+- BLE / App 配网（本板历史不稳定，优先官方 ESP BLE Prov 验证）
 - **接回 GC9A01 有载复测** `TP-LINK_D6B1`（对照空载成功）
 - 有载仍失败时：缩短杜邦线、加近端去耦、或家宽单独 2.4G IoT SSID
 - Arduino_GFX 1.5+ 需换 pioarduino（ESP32 core 3.x）
