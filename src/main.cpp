@@ -121,26 +121,32 @@ static void flushPreviewFloating() {
   constexpr int dst = kPreviewSize;
   constexpr int ox = (240 - dst) / 2;
   constexpr int oy = (240 - dst) / 2;
+  constexpr int cr = dst / 2;
+  constexpr int cr2 = cr * cr;
 
   display->fillScreen(BLACK);
 
   auto *tft = static_cast<Arduino_TFT *>(display);
   uint16_t row[dst];
 
+  // Nearest-neighbor shrink + circular mask (photo faces are square bitmaps).
   tft->startWrite();
   tft->writeAddrWindow(ox, oy, dst, dst);
   for (int y = 0; y < dst; ++y) {
+    const int dy = y - cr;
+    const int dy2 = dy * dy;
     const uint16_t *srcRow = fb + (y * src / dst) * src;
     for (int x = 0; x < dst; ++x) {
-      row[x] = srcRow[gPreviewMapX[x]];
+      const int dx = x - cr;
+      row[x] = (dx * dx + dy2 <= cr2) ? srcRow[gPreviewMapX[x]] : (uint16_t)0x0000;
     }
     tft->writePixels(row, dst);
   }
   tft->endWrite();
 
-  const int16_t cr = (int16_t)(dst / 2 + 2);
-  display->drawCircle(120, 120, cr, kPreviewRing);
-  display->drawCircle(120, 120, cr + 1, kPreviewRingDim);
+  const int16_t ringR = (int16_t)(cr + 2);
+  display->drawCircle(120, 120, ringR, kPreviewRing);
+  display->drawCircle(120, 120, ringR + 1, kPreviewRingDim);
 
   const char *name = gFace ? gFace->name() : "?";
   const int16_t nw = (int16_t)(strlen(name) * 6);
@@ -250,7 +256,7 @@ static void handleSerialLine(String line) {
     selectFace(nextFace(gFaceId), false);
     return;
   }
-  if (line.length() == 1 && line[0] >= '1' && line[0] <= '5') {
+  if (line.length() == 1 && line[0] >= '1' && line[0] <= '6') {
     selectFace(static_cast<FaceId>(line[0] - '1'), false);
     return;
   }
@@ -279,7 +285,7 @@ static void handleSerialLine(String line) {
     return;
   }
   if (line.equalsIgnoreCase("h") || line == "?") {
-    Serial.println("Keys: 1-5 faces | n next | p hotspot | t YYYY-MM-DD HH:MM:SS | e EC11");
+    Serial.println("Keys: 1-6 faces | n next | p hotspot | t YYYY-MM-DD HH:MM:SS | e EC11");
     Serial.println("EC11: turn=preview | short=confirm | long=Settings");
     Serial.println("Setup: w SSID PASS | s skip Wi-Fi");
   }

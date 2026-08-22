@@ -74,7 +74,7 @@ src/time/TimeService.*       # NTP / Soft / Manual / 运行时区
 src/wifi/WifiProvision.*     # STA 连接（8.5dBm、关省电、多 mode 重试）
 src/ui/ProvQr.*              # 配网提示 / 二维码（历史 SoftAP 用）
 src/ui/Settings.*            # 长按设置菜单
-src/face/                    # Classic / Lume / Skeleton / Calendar / Photo
+src/face/                    # Classic / Lume / Skeleton / Calendar / Photo / Crown
 ```
 
 ## 表盘
@@ -86,9 +86,11 @@ src/face/                    # Classic / Lume / Skeleton / Calendar / Photo
 | 3 | Skeleton | 镂空 |
 | 4 | Calendar | 日历窗 |
 | **5** | **Photo** | **照片背景（当前默认）** |
+| 6 | Crown | 照片背景（皇冠肖像） |
 
 - 编译期：`#define DEFAULT_FACE FaceId::Photo`
-- 运行期：串口 `1`–`5` / `n`，或 EC11 旋转/短按
+- 运行期：串口 `1`–`6` / `n`，或 EC11 旋转/短按
+- Photo / Crown 预览：`flushPreviewFloating` 圆形遮罩，方形图四角不漏
 
 ## Wi‑Fi / NTP（已验证路径）
 
