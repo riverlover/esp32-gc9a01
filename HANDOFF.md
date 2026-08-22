@@ -1,6 +1,53 @@
 # Handoff — ESP32-C3 Super Mini + GC9A01
 
-> 交接文档。下一会话可直接按本文继续，不必重走摸索过程。
+> 交接文档。下一会话直接按本文继续，不必重走摸索过程。  
+> 更新：2026-08-22 — 稳定版已打标签；当前在 BLE 试验分支。
+
+## 新会话先看这里
+
+| 项 | 值 |
+|----|-----|
+| 工程路径 | `/Users/lizhenhe/vscode/esp32-GC9A01` |
+| **稳定版标签** | **`v0.2.0`**（Photo + EC11 悬浮预览 + Settings；**无 BLE**） |
+| **当前分支** | **`feat/ble-wifiprov`**（与 `main` / `v0.2.0` 同提交起点，专做 BLE 试验） |
+| `main` | 与 `v0.2.0` 同提交 `6fd204a` |
+| 硬件 | **仅一块板**；试验前请先能烧回 `v0.2.0` |
+
+### 一块硬件：稳定固件 ↔ BLE 试验
+
+```bash
+# 回到稳定版并烧录
+git checkout v0.2.0   # 或 main
+pio run -t upload
+
+# 继续 BLE 试验
+git checkout feat/ble-wifiprov
+# …改代码…
+pio run -t upload
+```
+
+可选备份到远程：`git push origin v0.2.0` · `git push -u origin feat/ble-wifiprov`
+
+### 下一会话优先任务（BLE）
+
+**目标**：在本板验证官方 **ESP BLE Provisioning** App 能否配网（历史曾 `abort`，需重验）。
+
+**注意**：只在 `setup()`「打开 BLE」**不够**；官方 App 需要 `WiFiProv.beginProvision(… SCHEME_BLE …)` + PoP。
+
+**建议步骤**（勿一上来改挂表现有配网）：
+
+1. 在 `feat/ble-wifiprov` 做**最小 WiFiProv BLE 试验**（可临时简化 `main` / 旁路表盘与 Canvas，省堆）。
+2. 手机装 Espressif **ESP BLE Provisioning** → Provision Device → 无二维码 → 选 `PROV_…` → 填 PoP → 选 2.4G Wi‑Fi。
+3. 通了再考虑并回 Settings「BLE 配网」；不通则保留手机热点方案，合并回 `main` 时可不带 BLE。
+
+`config.h` 里已有残留宏（尚未接线到 WiFiProv）：
+
+- `PROV_SERVICE_NAME` 默认 `GC9A01-Setup`（App 侧常期望 `PROV_` 前缀，试验时建议改名）
+- `PROV_POP` 默认 `12345678`
+
+当前固件**运行时未开 BLE**，无配对模式可进。
+
+---
 
 ## 当前状态（已验证）
 
@@ -9,21 +56,22 @@
 | 硬件接线 | 已接好并点亮 |
 | macOS 识别 | Espressif USB JTAG/serial，无需额外驱动 |
 | 工具链 | PlatformIO Core 6.1.19（`~/.platformio/penv/bin`） |
-| 固件 | 模块化表盘；**默认 Photo(5)**；STA + NTP；**EC11 预览切面 + Settings 已通** |
+| 稳定固件 `v0.2.0` | 默认 Photo；STA + NTP；**EC11 预览切面 + Settings 已通** |
 | Wi‑Fi | 热点 `WatchESP` 已通；家宽 `TP-LINK_D6B1` **空载（拔屏）已通** |
-| 工程路径 | `/Users/lizhenhe/vscode/esp32-GC9A01` |
+| BLE | **未合入**；历史 WiFiProv 曾 abort；分支 `feat/ble-wifiprov` 待做 |
 
 ## 硬件
 
 - **MCU**：ESP32-C3 Super Mini（USB-C，板标 V1601 / Super Mini）
 - **屏**：1.28" TFT 240×240，驱动 IC **GC9A01**，7 针排针
+- **旋钮**：EC11
 - **连接**：杜邦线母对母
 
-### 已采用引脚（与 `src/pins.h` 一致）
+### 屏引脚（`src/pins.h`）
 
-| 屏引脚 | ESP32-C3 | 杜邦线颜色 |
-|--------|----------|------------|
-| VCC | **3.3**（勿接 5V） | 红 |
+| 屏 | GPIO | 线色 |
+|----|------|------|
+| VCC | **3.3**（勿 5V） | 红 |
 | GND | **G** | 黑 |
 | SCL | **6** | 橙 |
 | SDA | **7** | 黄 |
@@ -31,112 +79,85 @@
 | CS | **10** | 蓝 |
 | RST | **3** | 紫 |
 
-说明：信号脚可改，但必须与代码宏一致。尽量避开 GPIO 8/9（启动相关）。
+避开 GPIO 8/9（启动相关）。
 
-### EC11（与 `src/pins.h` 一致）
+### EC11（`src/pins.h`）
 
-| EC11 | ESP32-C3 |
-|------|----------|
+| EC11 | GPIO |
+|------|------|
 | CLK | **0** |
 | DT | **1** |
 | SW | **5** |
 | + | **3.3** |
 | GND | **G** |
 
-交互：旋转 → **黑底缩小悬浮预览**（静态冻结）→ 短按确认全屏（停转约 4s 自动确认）→ **长按进 Settings**。  
-SW 上电自动判极性；串口 `e` 诊断。驱动：`src/input/Ec11.*`；菜单：`src/ui/Settings.*`。
+| 手势 | 行为 |
+|------|------|
+| 旋转 | 黑底约 82% 缩小悬浮预览（**静态冻结**，不按秒刷） |
+| 短按 | 确认全屏；Toast |
+| 停转 ~4s | 自动确认 |
+| 长按 | **Settings** |
+| 菜单内 | 旋转滚动；短按进入/执行；长按返回；15s 空闲退出 |
 
-Settings 高频项：Face / Sync(NTP) / Timezone / Wi‑Fi / About；旋钮滚、短按进、长按返回；15s 空闲退出。
+驱动：`src/input/Ec11.*`（SW 上电自动判极性；串口 `e` 诊断）。
 
-### 屏 PCB 备注
+### Settings 高频项（`src/ui/Settings.*`）
 
-板上有「此模块可不接 CS、RST」字样；本工程仍接全，驱动更省事。
+Face · Sync(NTP) · Timezone(UTC±N) · Wi‑Fi(状态/Reconnect) · About · Back  
+
+Reconnect = `forceReprovision` → 等手机热点（**阻塞**）。
 
 ## 软件栈
 
-- Platform：`espressif32`（当前 7.0.1）→ Arduino-ESP32 **2.0.17**
-- Board：`esp32-c3-devkitm-1`，`board_build.partitions = huge_app.csv`
-- Framework：Arduino
-- 库：`GFX Library for Arduino@1.4.7`、`QRCode@0.0.1`  
-  - **不要升 GFX 到 1.5.x**（需 Arduino-ESP32 3.x）
+- Platform：`espressif32` 7.0.1 → Arduino-ESP32 **2.0.17**
+- Board：`esp32-c3-devkitm-1`，`huge_app.csv`
+- 库：`GFX Library for Arduino@1.4.7`、`QRCode@0.0.1`（**勿升 GFX 1.5.x**）
 - USB CDC：`ARDUINO_USB_MODE=1` + `ARDUINO_USB_CDC_ON_BOOT=1`
 
 ## 工程结构
 
 ```
 src/main.cpp                 # 编排 / 串口 / EC11 / Settings
-src/config.h                 # 默认；DEFAULT_FACE=Photo
-src/config.local.h           # gitignore：Wi‑Fi 与可选覆盖
-src/config.local.h.example
+src/config.h                 # DEFAULT_FACE=Photo；PROV_* 残留宏
+src/config.local.h           # gitignore
 src/pins.h                   # 屏 + EC11
-src/input/Ec11.*             # 旋钮正交解码 + 按键消抖
-src/time/TimeService.*       # NTP / Soft / Manual / 运行时区
-src/wifi/WifiProvision.*     # STA 连接（8.5dBm、关省电、多 mode 重试）
-src/ui/ProvQr.*              # 配网提示 / 二维码（历史 SoftAP 用）
-src/ui/Settings.*            # 长按设置菜单
+src/input/Ec11.*
+src/time/TimeService.*       # NTP / Soft / Manual / 运行时区 / syncNtpNow
+src/wifi/WifiProvision.*     # STA；8.5dBm；关 sleep
+src/ui/ProvQr.*              # 热点提示（非 BLE）
+src/ui/Settings.*
 src/face/                    # Classic / Lume / Skeleton / Calendar / Photo
 ```
 
 ## 表盘
 
-| 键 | 风格 | 说明 |
-|----|------|------|
-| 1 | Classic | 经典指针 |
-| 2 | Lume | 夜光 |
-| 3 | Skeleton | 镂空 |
-| 4 | Calendar | 日历窗 |
-| **5** | **Photo** | **照片背景（当前默认）** |
-
-- 编译期：`#define DEFAULT_FACE FaceId::Photo`
-- 运行期：串口 `1`–`5` / `n`，或 EC11 旋转/短按
-
-## Wi‑Fi / NTP（已验证路径）
-
-### A. 手机热点（接屏也稳）
-
-**`WatchESP` / `12345678`（WPA2）** → ESP STA → NTP。
-
-### B. 家宽空载（2026-08-15 验证）
-
-拔掉 GC9A01（仅 USB 供电、无外接屏）后连 **`TP-LINK_D6B1`**：
-
-| 项 | 结果 |
+| 键 | 风格 |
 |----|------|
-| 条件 | 空载、无杜邦线外设 |
-| mode | **0（Plain）一次成功** |
-| IP | `192.168.0.109` |
-| RSSI | **-43 dBm** |
-| NTP | OK → `Watch OK [NTP] Calendar` |
-| 耗时 | 约数秒 |
+| 1–4 | Classic / Lume / Skeleton / Calendar |
+| **5** | **Photo（默认）** |
 
-密码等密钥只写在 `config.local.h`（gitignore），勿提交。
+串口 `1`–`5` / `n`，或 EC11。
 
-```text
-Wi-Fi OK → NTP OK → Watch OK [NTP] Calendar …
-```
+## Wi‑Fi / NTP（换环境最方便）
 
-**推论**：接屏时对该 SSID 的 `AUTH_EXPIRE` / `4WAY_HANDSHAKE_TIMEOUT` 更像是 **屏/杜邦线供电或 GPIO 干扰**，而非密码错或家宽完全不可用。有载对比尚未复测。
+**首选（不改代码）**：手机开热点 **`WatchESP` / `12345678`** → 上电或 Settings→Wi‑Fi→Reconnect / 串口 `p`。
 
-RF 调参（`WifiProvision.cpp`）：`WiFi.setTxPower(WIFI_POWER_8_5dBm)` + `WiFi.setSleep(WIFI_PS_NONE)`。
+| 方式 | 场景 |
+|------|------|
+| 手机热点 `WatchESP` | 换地方校时，最稳 |
+| 串口 `w SSID PASS` | 临时连任意网（仅当次；在等热点循环里） |
+| `config.local.h` 烧录 | 长期固定路由器 |
+| 串口 `s` | 跳过 Wi‑Fi，软时钟 / 手动 `t` |
 
-本地配置示例（勿提交）：
+家宽 `TP-LINK_D6B1`：**空载可连**；接屏曾握手失败 → 疑外设干扰。RF：`WIFI_POWER_8_5dBm` + `WIFI_PS_NONE`。
 
-```bash
-# src/config.local.h
-#define WIFI_SSID "TP-LINK_D6B1"   # 或 WatchESP
-#define WIFI_PASS "********"
-#define DEFAULT_FACE FaceId::Calendar
-```
+串口：`w` · `s` · `t YYYY-MM-DD HH:MM:SS` · `p` · `e`（EC11）· `h`
 
-串口辅助：`w SSID PASS` · `s` 跳过 Wi‑Fi · `t YYYY-MM-DD HH:MM:SS` 手动校时 · `p` 重新进热点等待。
+### Wi‑Fi 踩坑摘要
 
-### 踩坑（Wi‑Fi）
-
-1. `AUTH_EXPIRE(2)` / `4WAY_HANDSHAKE_TIMEOUT(15)` **≠ 一定密码错**；C3 Super Mini 上极常见（射频/功率/天线/双频路由/**外设干扰**）。
-2. 家宽 `TP-LINK_D6B1`：**空载可连**；接屏时曾多次握手失败。小米 IoT 能连不代表 ESP 接屏也能连。
-3. ESP SoftAP / BLE 配网在本板不可靠（SoftAP 难被手机发现；BLE WiFiProv 曾 `abort`）。
-4. 华为连 ESP 热点常失败；反向「手机开热点、ESP 去连」更稳。
-5. 排障顺序：降功率 8.5dBm、关 sleep、专用 2.4G WPA2、**拔屏空载对比**（已证实有效）。
+1. AUTH_EXPIRE / 4WAY_TIMEOUT ≠ 一定密码错。  
+2. SoftAP / BLE Prov 本板历史不稳；华为连 ESP 热点差；**手机开热点让 ESP 连**更稳。  
+3. 排障：降功率、关 sleep、2.4G WPA2、拔屏对比。
 
 ## 常用命令
 
@@ -146,21 +167,33 @@ export PATH="$HOME/.platformio/penv/bin:$PATH"
 export http_proxy=http://127.0.0.1:7890 https_proxy=http://127.0.0.1:7890
 cd /Users/lizhenhe/vscode/esp32-GC9A01
 pio run -t upload
-# 串口：python 读 /dev/cu.usbmodem* 115200，或 pio device monitor
+# monitor 115200
 ```
 
-## 后续可做
+`platformio.ini` 端口示例：`/dev/cu.usbmodem1101`（数字可能变）。
 
-- Settings：亮度 / 休眠（需背光硬件）；Wi‑Fi Reconnect 非阻塞化
-- Calendar / Photo 表盘专用旋钮交互；断网保时（RTC）
-- BLE / App 配网（本板历史不稳定，优先官方 ESP BLE Prov 验证）
-- **接回 GC9A01 有载复测** `TP-LINK_D6B1`（对照空载成功）
-- 有载仍失败时：缩短杜邦线、加近端去耦、或家宽单独 2.4G IoT SSID
-- Arduino_GFX 1.5+ 需换 pioarduino（ESP32 core 3.x）
+## 后续可做（稳定线 / 试验线）
+
+**`feat/ble-wifiprov`（当前）**
+
+- [ ] 最小 WiFiProv BLE + 官方 App 验证  
+- [ ] 通过后再设计与现有 `WifiProvision` 的启动分流  
+
+**`main` / `v0.2.0` 产品线**
+
+- Settings：亮度/休眠；Reconnect 非阻塞  
+- Calendar/Photo 专用旋钮交互；RTC  
+- 家宽有载复测；GFX 1.5 需换 core 3.x  
 
 ## 其他踩坑
 
-1. macOS 对 C3 原生 USB 一般免驱。  
+1. macOS 对 C3 USB 一般免驱。  
 2. 下载走代理 `7890`。  
-3. 屏供电只用 **3.3V**。  
-4. Wi‑Fi 密码只放 `config.local.h`。
+3. 屏只用 **3.3V**。  
+4. Wi‑Fi 密码只放 `config.local.h`。  
+5. 预览缩放用 TFT `writeAddrWindow` + `writePixels`；预览中勿按秒重绘。
+
+## 相关文档
+
+- [README.md](./README.md) — 使用说明  
+- [STEPS.md](./STEPS.md) — 从接线到 EC11 / Settings 的步骤记录  
