@@ -2,6 +2,7 @@
 
 #include "assets/bg_portrait_240.h"
 #include "gfx_util.h"
+#include "prefs/WatchPrefs.h"
 
 using namespace watch;
 
@@ -29,7 +30,8 @@ void FacePhoto::render(Arduino_GFX *gfx, const struct tm &t) {
   snprintf(subBuf, sizeof(subBuf), "%s  %02d", wd, t.tm_mday > 0 ? t.tm_mday : 1);
   drawShadowedCentered(gfx, subBuf, 52, 0xDEFB, 1);
 
-  // Seconds as a thin arc tick near the rim (does not cover the face).
-  const float secDeg = t.tm_sec * 6.0f;
-  drawTick(gfx, secDeg, 114, 104, 0xF800);
+  if (WatchPrefs::showSeconds()) {
+    const float secDeg = t.tm_sec * 6.0f;
+    drawTick(gfx, secDeg, 114, 104, 0xF800);
+  }
 }

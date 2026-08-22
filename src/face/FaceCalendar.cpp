@@ -1,6 +1,7 @@
 #include "FaceCalendar.h"
 
 #include "gfx_util.h"
+#include "prefs/WatchPrefs.h"
 
 using namespace watch;
 
@@ -50,7 +51,9 @@ void FaceCalendar::render(Arduino_GFX *gfx, const struct tm &t) {
   handAngles(t, hourDeg, minDeg, secDeg);
   drawTaperedHand(gfx, hourDeg, 52, 5, 0xEF5D);
   drawTaperedHand(gfx, minDeg, 78, 4, 0xFFFF);
-  drawSecondHand(gfx, secDeg, 88, 0xF800);
+  if (WatchPrefs::showSeconds()) {
+    drawSecondHand(gfx, secDeg, 88, 0xF800);
+  }
 
   gfx->fillCircle(CX, CY, 6, 0xEF5D);
   gfx->fillCircle(CX, CY, 3, 0xF800);

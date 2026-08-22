@@ -1,6 +1,7 @@
 #include "FaceLume.h"
 
 #include "gfx_util.h"
+#include "prefs/WatchPrefs.h"
 
 using namespace watch;
 
@@ -42,7 +43,9 @@ void FaceLume::render(Arduino_GFX *gfx, const struct tm &t) {
   drawTaperedHand(gfx, hourDeg, 54, 3, LUME_HAND);
   drawTaperedHand(gfx, minDeg, 80, 5, LUME_DIM);
   drawTaperedHand(gfx, minDeg, 78, 2, LUME);
-  drawSecondHand(gfx, secDeg, 90, 0x07E0, 18);
+  if (WatchPrefs::showSeconds()) {
+    drawSecondHand(gfx, secDeg, 90, 0x07E0, 18);
+  }
 
   gfx->fillCircle(CX, CY, 7, LUME_DIM);
   gfx->fillCircle(CX, CY, 4, LUME);

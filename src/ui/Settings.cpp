@@ -6,6 +6,7 @@
 
 #include "config.h"
 #include "face/FaceId.h"
+#include "prefs/WatchPrefs.h"
 #include "time/TimeService.h"
 #include "wifi/WifiProvision.h"
 
@@ -16,7 +17,7 @@ constexpr uint32_t kIdleExitMs = 15000;
 constexpr uint16_t COL_BG = 0x0000;
 constexpr uint16_t COL_FG = 0xFFFF;
 constexpr uint16_t COL_DIM = 0x8410;
-constexpr uint16_t COL_HL = 0x05FF;  // cyan highlight bar
+constexpr uint16_t COL_HL = 0x05FF;
 
 enum class Screen : uint8_t { Root = 0, Face, Sync, Tz, Wifi, About };
 
@@ -27,8 +28,9 @@ int8_t gIndex = 0;
 uint32_t gLastInputMs = 0;
 char gStatusLine[48] = "";
 
-constexpr int kRootCount = 6;
-const char *kRootLabels[kRootCount] = {"Face", "Sync", "Timezone", "Wi-Fi", "About", "Back"};
+constexpr int kRootCount = 7;
+constexpr int kIdxSeconds = 4;
+constexpr int kIdxAbout = 5;
 
 void touch() { gLastInputMs = millis(); }
 
@@ -55,15 +57,15 @@ int screenCount() {
     case Screen::Root:
       return kRootCount;
     case Screen::Face:
-      return (int)FaceId::Count + 1;  // faces + Back
+      return (int)FaceId::Count + 1;
     case Screen::Sync:
-      return 2;  // Sync NTP / Back
+      return 2;
     case Screen::Tz:
-      return 3;  // value / hint / Back
+      return 3;
     case Screen::Wifi:
-      return 3;  // status / Reconnect / Back
+      return 3;
     case Screen::About:
-      return 1;  // Back only (info is static)
+      return 1;
   }
   return 1;
 }
@@ -98,6 +100,32 @@ void goBack() {
     return;
   }
   goRoot();
+}
+
+void rootLabel(int i, char *out, size_t n) {
+  switch (i) {
+    case 0:
+      snprintf(out, n, "Face");
+      break;
+    case 1:
+      snprintf(out, n, "Sync");
+      break;
+    case 2:
+      snprintf(out, n, "Timezone");
+      break;
+    case 3:
+      snprintf(out, n, "Wi-Fi");
+      break;
+    case kIdxSeconds:
+      snprintf(out, n, "Seconds: %s", WatchPrefs::showSeconds() ? "ON" : "OFF");
+      break;
+    case kIdxAbout:
+      snprintf(out, n, "About");
+      break;
+    default:
+      snprintf(out, n, "Back");
+      break;
+  }
 }
 
 void drawCentered(Arduino_GFX *gfx, int16_t y, const char *text, uint16_t color, uint8_t size = 1) {
@@ -153,7 +181,6 @@ bool handleInput(int8_t rot, bool shortPress, bool longPress) {
   if (rot != 0) {
     touch();
     if (gScreen == Screen::Tz && gIndex == 0) {
-      // First row: adjust TZ hours with rotate.
       TimeService::setTzOffsetHours(TimeService::tzOffsetHours() + (rot > 0 ? 1 : -1));
       dirty = true;
     } else {
@@ -196,7 +223,11 @@ bool handleInput(int8_t rot, bool shortPress, bool longPress) {
             gIndex = 0;
             setStatus("");
             break;
-          case 4:
+          case kIdxSeconds:
+            WatchPrefs::setShowSeconds(!WatchPrefs::showSeconds());
+            setStatus(WatchPrefs::showSeconds() ? "Seconds ON" : "Seconds OFF");
+            break;
+          case kIdxAbout:
             gScreen = Screen::About;
             gIndex = 0;
             break;
@@ -231,7 +262,6 @@ bool handleInput(int8_t rot, bool shortPress, bool longPress) {
         if (gIndex == 2) {
           goBack();
         }
-        // index 0/1: rotate already adjusts; short confirms stay
         break;
 
       case Screen::Wifi:
@@ -262,14 +292,18 @@ void draw(Arduino_GFX *gfx) {
   gfx->fillScreen(COL_BG);
   gfx->drawCircle(120, 120, 118, COL_DIM);
 
-  drawCentered(gfx, 28, titleFor(), COL_FG, 2);
+  drawCentered(gfx, 22, titleFor(), COL_FG, 2);
 
   char line[40];
 
   switch (gScreen) {
     case Screen::Root:
       for (int i = 0; i < kRootCount; ++i) {
-        drawListItem(gfx, (int16_t)(70 + i * 20), kRootLabels[i], i == gIndex);
+        rootLabel(i, line, sizeof(line));
+        drawListItem(gfx, (int16_t)(52 + i * 18), line, i == gIndex);
+      }
+      if (gStatusLine[0]) {
+        drawCentered(gfx, 200, gStatusLine, COL_HL);
       }
       break;
 
@@ -338,11 +372,13 @@ void draw(Arduino_GFX *gfx) {
       drawCentered(gfx, 100, line, COL_DIM);
       snprintf(line, sizeof(line), "time %s", TimeService::sourceName());
       drawCentered(gfx, 116, line, COL_DIM);
+      snprintf(line, sizeof(line), "sec %s", WatchPrefs::showSeconds() ? "ON" : "OFF");
+      drawCentered(gfx, 132, line, COL_DIM);
       if (WifiProvision::isConnected()) {
         snprintf(line, sizeof(line), "%s", WiFi.localIP().toString().c_str());
-        drawCentered(gfx, 132, line, COL_DIM);
+        drawCentered(gfx, 148, line, COL_DIM);
       }
-      drawListItem(gfx, 170, "Back", true);
+      drawListItem(gfx, 178, "Back", true);
       break;
     }
   }

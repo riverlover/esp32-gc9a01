@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "prefs/WatchPrefs.h"
+
 namespace watch {
 
 static constexpr int16_t CX = 120;
@@ -18,8 +20,9 @@ inline void polar(int16_t r, float deg, int16_t &x, int16_t &y) {
 }
 
 inline void handAngles(const struct tm &t, float &hourDeg, float &minDeg, float &secDeg) {
-  secDeg = t.tm_sec * 6.0f;
-  minDeg = t.tm_min * 6.0f + t.tm_sec * 0.1f;
+  const int sec = WatchPrefs::showSeconds() ? t.tm_sec : 0;
+  secDeg = sec * 6.0f;
+  minDeg = t.tm_min * 6.0f + sec * 0.1f;
   hourDeg = (t.tm_hour % 12) * 30.0f + t.tm_min * 0.5f;
 }
 

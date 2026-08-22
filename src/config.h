@@ -72,6 +72,11 @@
 #define WEATHER_REFRESH_MS (20UL * 60UL * 1000UL)
 #endif
 
+// Show seconds (and 1Hz redraw). Override / Settings toggle; NVS persists.
+#ifndef DEFAULT_SHOW_SECONDS
+#define DEFAULT_SHOW_SECONDS 1
+#endif
+
 // Boot face. Runtime: Serial '1'..'7' or 'n' to cycle.
 #ifndef DEFAULT_FACE
 #define DEFAULT_FACE FaceId::Photo

@@ -1,6 +1,7 @@
 #include "FaceClassic.h"
 
 #include "gfx_util.h"
+#include "prefs/WatchPrefs.h"
 
 using namespace watch;
 
@@ -31,7 +32,9 @@ void FaceClassic::render(Arduino_GFX *gfx, const struct tm &t) {
   handAngles(t, hourDeg, minDeg, secDeg);
   drawTaperedHand(gfx, hourDeg, 58, 5, 0xEF5D);
   drawTaperedHand(gfx, minDeg, 82, 4, 0xFFFF);
-  drawSecondHand(gfx, secDeg, 92, 0xF800);
+  if (WatchPrefs::showSeconds()) {
+    drawSecondHand(gfx, secDeg, 92, 0xF800);
+  }
 
   gfx->fillCircle(CX, CY, 6, 0xEF5D);
   gfx->fillCircle(CX, CY, 3, 0xF800);

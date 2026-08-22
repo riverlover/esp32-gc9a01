@@ -253,7 +253,8 @@ pio run -t upload
 13. Photo 表盘 + **EC11（CLK0/DT1/SW5）悬浮预览切面**（静态黑底、按键 Toast）→  
 14. **Settings 高频菜单**（Face / Sync / TZ / Wi‑Fi / About）→  
 15. **Crown** 照片表盘 + 预览圆形遮罩（防方形图四角漏出）→  
-16. **Dash** 多功能表盘（周几/月日 + Open‑Meteo 天气）。
+16. **Dash** 多功能表盘（周几/月日 + Open‑Meteo 天气）→  
+17. Settings **Seconds** 开关 + 关秒降刷新；文档补降功耗手段与会话复盘。
 
 更精简的交接信息见 [HANDOFF.md](./HANDOFF.md)。
 
@@ -291,6 +292,7 @@ pio run -t upload
 | Sync | `TimeService::syncNtpNow()` |
 | Timezone | 旋转调 `UTC±N`（−12…+14） |
 | Wi‑Fi | 显示 SSID/RSSI；Reconnect = 等手机热点（阻塞） |
+| **Seconds** | ON/OFF（NVS）；OFF 约每分钟刷新 |
 | About | heap / 时间源 / IP |
 | 退出 | 根菜单 Back、长按返回、或 15s 空闲 |
 
@@ -308,4 +310,26 @@ pio run -t upload
 - `FaceId::Dash`（串口 `7`）：大数字时钟 + 星期/月日 + 天气图标/气温/湿度
 - `src/weather/WeatherService.*`：Open‑Meteo HTTPS，默认北京坐标，约 20min 刷新；串口 `r` 立即刷新
 - 本地覆盖：`config.local.h` 中 `WEATHER_LAT` / `WEATHER_LON`
+
+---
+
+## 16. Seconds 开关与降功耗（2026-08-22）
+
+- `src/prefs/WatchPrefs.*`：NVS 持久化 `showSeconds`
+- Settings 根菜单 `Seconds: ON/OFF`；OFF 时各表盘不画秒，`main` 按分钟重绘
+- 完整降耗清单与优先级见 [HANDOFF.md](./HANDOFF.md)「功耗与降耗手段」
+
+---
+
+## 17. 会话复盘：为何多次「编不过 / 不一致」（2026-08-22）
+
+| 现象 | 原因 |
+|------|------|
+| 写的符号与工程对不上 | 改前未用磁盘源码核对现用 API，凭记忆/单次 Read 写了另一套名字 |
+| 同一文件行为反复变 | 对 FaceDash / Weather / Settings **多次整文件 Write**，版本互相覆盖、半新旧 |
+| 源码已坏仍显示 SUCCESS | PlatformIO **增量编译**未重编该 `.cpp`，旧 `.o` 仍链接成功 |
+| main 差点被改坏 | 过宽字符串替换（如匹配 `Settings::begin(`）插到错误位置 |
+| 排查变慢 | 未先清 `.o` / 未以编译器首条 `error:` 为准，和脚本噪音混在一起 |
+
+约定：磁盘为准 → 小步改 → 必要时 `rm .pio/build/.../*.o` 再 `pio run` → 改后抽查关键片段。细节见 HANDOFF 同节。
 

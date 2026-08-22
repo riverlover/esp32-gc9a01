@@ -2,6 +2,7 @@
 
 #include "gfx_util.h"
 #include "weather/WeatherService.h"
+#include "prefs/WatchPrefs.h"
 
 using namespace watch;
 
@@ -93,9 +94,11 @@ void FaceDash::render(Arduino_GFX *gfx, const struct tm &t) {
   snprintf(timeBuf, sizeof(timeBuf), "%02d:%02d", t.tm_hour, t.tm_min);
   drawCenteredText(gfx, timeBuf, 78, 0xFFFF, 4);
 
+  if (WatchPrefs::showSeconds()) {
   char secBuf[4];
   snprintf(secBuf, sizeof(secBuf), "%02d", t.tm_sec);
   drawCenteredText(gfx, secBuf, 118, 0xF800, 2);
+  }
 
   const WeatherService::Snapshot wx = WeatherService::get();
   if (wx.valid) {

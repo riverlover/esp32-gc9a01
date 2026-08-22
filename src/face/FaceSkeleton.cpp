@@ -1,6 +1,7 @@
 #include "FaceSkeleton.h"
 
 #include "gfx_util.h"
+#include "prefs/WatchPrefs.h"
 
 using namespace watch;
 
@@ -51,7 +52,9 @@ void FaceSkeleton::render(Arduino_GFX *gfx, const struct tm &t) {
   handAngles(t, hourDeg, minDeg, secDeg);
   drawHollowHand(gfx, hourDeg, 55, 6, SK_STEEL);
   drawHollowHand(gfx, minDeg, 78, 5, 0xFFFF);
-  drawSecondHand(gfx, secDeg, 94, SK_ACCENT, 20);
+  if (WatchPrefs::showSeconds()) {
+    drawSecondHand(gfx, secDeg, 94, SK_ACCENT, 20);
+  }
 
   gfx->drawCircle(CX, CY, 8, SK_STEEL);
   gfx->fillCircle(CX, CY, 3, SK_ACCENT);

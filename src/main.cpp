@@ -11,6 +11,7 @@
 #include "pins.h"
 #include "time/TimeService.h"
 #include "ui/ProvQr.h"
+#include "prefs/WatchPrefs.h"
 #include "ui/Settings.h"
 #include "weather/WeatherService.h"
 
@@ -22,7 +23,7 @@ static Arduino_Canvas *canvas = nullptr;
 static FaceId gFaceId = DEFAULT_FACE;  // currently shown (may be preview)
 static FaceId gCommittedFace = DEFAULT_FACE;
 static IWatchFace *gFace = nullptr;
-static int lastDrawnSecond = -1;
+static int lastDrawnKey = -1;  // sec, or hour*60+min when seconds off
 static bool forceRedraw = true;
 static int lastProvScreen = -1;
 static bool gPreview = false;
@@ -361,6 +362,7 @@ void setup() {
   ensureCanvas();
 
   Ec11::begin();
+  WatchPrefs::begin();
   Settings::begin(Settings::Hooks{settingsGetFace, settingsSetFace});
   WeatherService::begin();
   selectFace(DEFAULT_FACE, false);
@@ -368,7 +370,7 @@ void setup() {
   struct tm t{};
   TimeService::now(t);
   redraw(t);
-  lastDrawnSecond = t.tm_sec;
+  lastDrawnKey = WatchPrefs::showSeconds() ? t.tm_sec : (t.tm_hour * 60 + t.tm_min);
   forceRedraw = false;
 
   Serial.printf("Watch OK [%s] %s %02d:%02d:%02d tz=UTC%+d\n", TimeService::sourceName(),
@@ -427,12 +429,15 @@ void loop() {
   }
   toastWasAlive = toastAlive;
 
-  if (!forceRedraw && t.tm_sec == lastDrawnSecond && !toastAlive) {
-    delay(2);
-    return;
+  if (!forceRedraw && !toastAlive) {
+    const int key = WatchPrefs::showSeconds() ? t.tm_sec : (t.tm_hour * 60 + t.tm_min);
+    if (key == lastDrawnKey) {
+      delay(WatchPrefs::showSeconds() ? 2 : 50);
+      return;
+    }
   }
 
   redraw(t);
-  lastDrawnSecond = t.tm_sec;
+  lastDrawnKey = WatchPrefs::showSeconds() ? t.tm_sec : (t.tm_hour * 60 + t.tm_min);
   forceRedraw = false;
 }

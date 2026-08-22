@@ -46,7 +46,7 @@
 交互：旋转 → **黑底缩小悬浮预览**（静态冻结）→ 短按确认全屏（停转约 4s 自动确认）→ **长按进 Settings**。  
 SW 上电自动判极性；串口 `e` 诊断。驱动：`src/input/Ec11.*`；菜单：`src/ui/Settings.*`。
 
-Settings 高频项：Face / Sync(NTP) / Timezone / Wi‑Fi / About；旋钮滚、短按进、长按返回；15s 空闲退出。
+Settings 高频项：Face / Sync(NTP) / Timezone / Wi‑Fi / **Seconds** / About；旋钮滚、短按进、长按返回；15s 空闲退出。
 
 ### 屏 PCB 备注
 
@@ -154,6 +154,25 @@ pio run -t upload
 # 串口：python 读 /dev/cu.usbmodem* 115200，或 pio device monitor
 ```
 
+## 功耗与降耗手段
+
+当前板子主要耗电：**常亮 GC9A01 + Wi‑Fi STA**。软件侧已落地一项：
+
+| 项 | 状态 | 说明 |
+|----|------|------|
+| **Seconds ON/OFF** | **已做** | Settings 根菜单短按切换；NVS 持久化（`WatchPrefs`）。OFF：不画秒针/秒数，约**每分钟**全屏刷新，空闲 `delay(50)` |
+
+按收益大致排序的其他手段（多数未实现，供后续）：
+
+1. **降刷新频率**（已做关秒）— SPI 全屏刷新是大头之一；关秒从 ~1 Hz 降到 ~1/60 Hz。
+2. **背光 PWM / 空闲灭屏** — 需 BL 脚或模组可控背光；本接线若无背光 GPIO，收益有限。
+3. **Wi‑Fi 策略** — NTP 成功后关 STA 或拉长重连；常连热点最耗电。天气已约 20 min 拉一次，可再拉长或仅 Dash 才拉。
+4. **降 CPU 频率** — 空闲 `setCpuFrequencyMhz(80)` 等（需验证 Wi‑Fi / 显示稳定）。
+5. **Light sleep** — 分针间隙短睡，定时器 / EC11 GPIO 唤醒；要处理好 Wi‑Fi 与旋钮。
+6. **少画全屏** — 脏区更新；Photo/Crown 全图拷贝更费，可考虑缓存静态底。
+7. **RF** — 已用较低 TX（约 8.5 dBm）+ 关 modem sleep（握手期）；保持即可。
+8. **硬件** — 稳压效率、杜邦压降、电池内阻；屏供电干净可减少 Wi‑Fi 重试（间接省电）。
+
 ## 后续可做
 
 - Settings：亮度 / 休眠（需背光硬件）；Wi‑Fi Reconnect 非阻塞化
@@ -170,3 +189,24 @@ pio run -t upload
 2. 下载走代理 `7890`。  
 3. 屏供电只用 **3.3V**。  
 4. Wi‑Fi 密码只放 `config.local.h`。
+
+## 会话复盘（2026-08-22：Crown / Dash / Seconds）
+
+本次会话里多次出现「以为源码是 A、实际磁盘是 B」「写完又对不上、编译反复不对」的情况。根因不是硬件，而是**工作流与工具使用**：
+
+1. **未以磁盘为准核对 API**  
+   改 Settings / Weather / Face 时，有时凭对话记忆或单次 Read 印象写下一套符号（函数名、Hooks 字段、include 路径），与仓库真实命名不一致。正确做法：改前用 `cat` / `python Path.read_text()` 确认现用符号，再写。
+
+2. **同一文件多次 Write 互相覆盖**  
+   FaceDash、WeatherService、Settings 曾连续写多版，中间版本 API 不一致（例如 `poll()` 返回值、`refreshNow`、字段名）。后一次 Write 若只改一半，会留下半新旧状态，编译或链接阶段才爆。
+
+3. **PlatformIO 增量编译掩盖坏源码**  
+   `pio run` 有时未重编刚改的 `.cpp`（时间戳 / 缓存），旧 `.o` 仍能链上，表现为「源码已坏但 SUCCESS」。应用 `rm …/*.o` 或 `pio run -t clean` 后再编，才能暴露真实错误。
+
+4. **粗糙字符串替换污染邻接代码**  
+   往 `main.cpp` 插 `WatchPrefs::begin()` 时用过宽的 `Settings::begin(` 替换，一度差点写进错误函数体。大文件改动应小范围、带足够上下文，改完立刻打印相关片段核对。
+
+5. **「看起来像编译不过」有时是代理流程噪音**  
+   部分失败来自脚本/tee/路径假设，而非编译器报错；应以 `pio run` 末尾 `SUCCESS`/`Error` 与首条 `error:` 为准。
+
+**以后约定**：磁盘源码是唯一真相 → 改前核对符号 → 小步改、立刻重编（必要时清 `.o`）→ 改后抽查关键片段。
