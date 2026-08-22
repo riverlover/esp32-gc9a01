@@ -252,7 +252,8 @@ pio run -t upload
 12. **拔屏空载**：家宽 `TP-LINK_D6B1` 可连且 NTP 成功（疑外设干扰）→  
 13. Photo 表盘 + **EC11（CLK0/DT1/SW5）悬浮预览切面**（静态黑底、按键 Toast）→  
 14. **Settings 高频菜单**（Face / Sync / TZ / Wi‑Fi / About）→  
-15. **Crown** 照片表盘 + 预览圆形遮罩（防方形图四角漏出）。
+15. **Crown** 照片表盘 + 预览圆形遮罩（防方形图四角漏出）→  
+16. **Dash** 多功能表盘（周几/月日 + Open‑Meteo 天气）。
 
 更精简的交接信息见 [HANDOFF.md](./HANDOFF.md)。
 
@@ -299,3 +300,12 @@ pio run -t upload
 
 - 新增 `FaceId::Crown`（串口 `6`）：`src/face/FaceCrown.*` + `assets/bg_crown_240.h`（240×240 RGB565）
 - `flushPreviewFloating`：缩放写出时按半径裁圆，Photo / Crown 预览不再漏出方形四角
+
+---
+
+## 15. Dash 多功能表盘（2026-08-22）
+
+- `FaceId::Dash`（串口 `7`）：大数字时钟 + 星期/月日 + 天气图标/气温/湿度
+- `src/weather/WeatherService.*`：Open‑Meteo HTTPS，默认北京坐标，约 20min 刷新；串口 `r` 立即刷新
+- 本地覆盖：`config.local.h` 中 `WEATHER_LAT` / `WEATHER_LON`
+

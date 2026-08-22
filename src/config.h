@@ -61,7 +61,18 @@
 #define SOFT_START_S 0
 #endif
 
-// Boot face. Runtime: Serial '1'..'6' or 'n' to cycle.
+// Open-Meteo (no API key). Override in config.local.h for your city.
+#ifndef WEATHER_LAT
+#define WEATHER_LAT 39.9042f
+#endif
+#ifndef WEATHER_LON
+#define WEATHER_LON 116.4074f
+#endif
+#ifndef WEATHER_REFRESH_MS
+#define WEATHER_REFRESH_MS (20UL * 60UL * 1000UL)
+#endif
+
+// Boot face. Runtime: Serial '1'..'7' or 'n' to cycle.
 #ifndef DEFAULT_FACE
 #define DEFAULT_FACE FaceId::Photo
 #endif

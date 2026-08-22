@@ -74,7 +74,8 @@ src/time/TimeService.*       # NTP / Soft / Manual / 运行时区
 src/wifi/WifiProvision.*     # STA 连接（8.5dBm、关省电、多 mode 重试）
 src/ui/ProvQr.*              # 配网提示 / 二维码（历史 SoftAP 用）
 src/ui/Settings.*            # 长按设置菜单
-src/face/                    # Classic / Lume / Skeleton / Calendar / Photo / Crown
+src/face/                    # Classic…Crown / Dash
+src/weather/                 # Open-Meteo
 ```
 
 ## 表盘
@@ -87,9 +88,11 @@ src/face/                    # Classic / Lume / Skeleton / Calendar / Photo / Cr
 | 4 | Calendar | 日历窗 |
 | **5** | **Photo** | **照片背景（当前默认）** |
 | 6 | Crown | 照片背景（皇冠肖像） |
+| 7 | Dash | 多功能：时钟 + 周几/月日 + 天气 |
 
 - 编译期：`#define DEFAULT_FACE FaceId::Photo`
-- 运行期：串口 `1`–`6` / `n`，或 EC11 旋转/短按
+- 运行期：串口 `1`–`7` / `n` / `r`(刷天气)，或 EC11 旋转/短按
+- Dash：Open‑Meteo（默认北京 lat/lon，见 `WEATHER_*`）
 - Photo / Crown 预览：`flushPreviewFloating` 圆形遮罩，方形图四角不漏
 
 ## Wi‑Fi / NTP（已验证路径）
@@ -155,6 +158,7 @@ pio run -t upload
 
 - Settings：亮度 / 休眠（需背光硬件）；Wi‑Fi Reconnect 非阻塞化
 - Calendar / Photo 表盘专用旋钮交互；断网保时（RTC）
+- Dash 天气：更多城市预设 / Settings 里手动刷新
 - BLE / App 配网（本板历史不稳定，优先官方 ESP BLE Prov 验证）
 - **接回 GC9A01 有载复测** `TP-LINK_D6B1`（对照空载成功）
 - 有载仍失败时：缩短杜邦线、加近端去耦、或家宽单独 2.4G IoT SSID

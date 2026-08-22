@@ -3,6 +3,7 @@
 #include "FaceCalendar.h"
 #include "FaceClassic.h"
 #include "FaceCrown.h"
+#include "FaceDash.h"
 #include "FaceLume.h"
 #include "FacePhoto.h"
 #include "FaceSkeleton.h"
@@ -14,6 +15,7 @@ IWatchFace *getFace(FaceId id) {
   static FaceCalendar calendar;
   static FacePhoto photo;
   static FaceCrown crown;
+  static FaceDash dash;
 
   switch (id) {
     case FaceId::Lume:
@@ -26,6 +28,8 @@ IWatchFace *getFace(FaceId id) {
       return &photo;
     case FaceId::Crown:
       return &crown;
+    case FaceId::Dash:
+      return &dash;
     case FaceId::Classic:
     default:
       return &classic;

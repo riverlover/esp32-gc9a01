@@ -5,5 +5,7 @@
 #define WIFI_PASS "your-password"
 
 // Optional overrides:
-// #define DEFAULT_FACE FaceId::Calendar
+// #define DEFAULT_FACE FaceId::Dash
 // #define NTP_TZ_OFFSET_SEC (8 * 3600)
+// #define WEATHER_LAT 31.2304f   // Shanghai example
+// #define WEATHER_LON 121.4737f

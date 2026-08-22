@@ -4,7 +4,7 @@ ESP32-C3 Super Mini 驱动 1.28" GC9A01（240×240）圆形 TFT，实现模块�
 
 ## 功能
 
-- 六种表盘：Classic / Lume / Skeleton / Calendar / Photo / **Crown**（照片背景；默认仍为 Photo）
+- 七种表盘：Classic / Lume / Skeleton / Calendar / Photo / Crown / **Dash**（天气+日历多功能；默认仍为 Photo）
 - Wi‑Fi STA 连接 + NTP 校时（默认东八区）
 - 离屏 Canvas 双缓冲，减轻秒针刷新闪烁
 - **EC11 旋钮**：黑底缩小悬浮预览、短按确认、**长按进 Settings**
@@ -96,10 +96,13 @@ Wi-Fi OK → NTP OK → Watch OK [NTP] Calendar …
 | `4` | Calendar | 日历窗 |
 | `5` | Photo | 照片背景（默认） |
 | `6` | Crown | 照片背景（皇冠肖像） |
+| `7` | Dash | 多功能：大数字时钟 + 周几/月日 + Open‑Meteo 天气 |
 
-编译期默认：`DEFAULT_FACE`（见 `src/config.h` / `config.local.h`）。运行期串口发 `1`–`6` 或 `n` 切换；也可用 EC11。
+编译期默认：`DEFAULT_FACE`（见 `src/config.h` / `config.local.h`）。运行期串口发 `1`–`7` 或 `n` 切换；也可用 EC11。
 
 照片类表盘在 **EC11 悬浮预览** 时会做圆形遮罩，避免方形位图四角漏出。
+
+Dash 天气默认坐标北京（`WEATHER_LAT` / `WEATHER_LON`），可在 `config.local.h` 覆盖；约每 20 分钟拉取 Open‑Meteo（无需 API Key）。串口 `r` 立即刷新。
 
 ## EC11 操作
 
@@ -134,7 +137,8 @@ Wi-Fi OK → NTP OK → Watch OK [NTP] Calendar …
 
 | 命令 | 作用 |
 |------|------|
-| `1`–`6` / `n` | 选表盘 / 下一个 |
+| `1`–`7` / `n` | 选表盘 / 下一个 |
+| `r` | 立即刷新天气 |
 | `e` | EC11 诊断（SW raw / activeLow / 当前面） |
 | `w SSID PASS` | 设置 Wi‑Fi 并连接 |
 | `s` | 跳过 Wi‑Fi（软时钟） |
@@ -153,7 +157,8 @@ src/input/             # EC11 正交解码与按键
 src/time/              # NTP / Soft / Manual / 时区
 src/wifi/              # STA 连接与 RF 调参
 src/ui/                # 配网提示 / Settings
-src/face/              # Classic / Lume / Skeleton / Calendar / Photo / Crown
+src/face/              # Classic…Crown / Dash
+src/weather/           # Open-Meteo 天气
 ```
 
 ## 文档

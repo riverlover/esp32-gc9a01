@@ -12,6 +12,7 @@
 #include "time/TimeService.h"
 #include "ui/ProvQr.h"
 #include "ui/Settings.h"
+#include "weather/WeatherService.h"
 
 Arduino_DataBus *bus = new Arduino_ESP32SPI(TFT_DC, TFT_CS, TFT_SCLK, TFT_MOSI, -1);
 Arduino_GFX *display = new Arduino_GC9A01(bus, TFT_RST, 0 /* rotation */, true /* IPS */);
@@ -256,7 +257,7 @@ static void handleSerialLine(String line) {
     selectFace(nextFace(gFaceId), false);
     return;
   }
-  if (line.length() == 1 && line[0] >= '1' && line[0] <= '6') {
+  if (line.length() == 1 && line[0] >= '1' && line[0] <= '7') {
     selectFace(static_cast<FaceId>(line[0] - '1'), false);
     return;
   }
@@ -278,6 +279,12 @@ static void handleSerialLine(String line) {
     }
     return;
   }
+  if (line.equalsIgnoreCase("r")) {
+    Serial.println("Weather refresh…");
+    WeatherService::refreshNow();
+    forceRedraw = true;
+    return;
+  }
   if (line.equalsIgnoreCase("e")) {
     Serial.printf("EC11 SW raw=%u activeLow=%d preview=%d settings=%d face=%s\n",
                   (unsigned)Ec11::swRawLevel(), Ec11::swActiveLow() ? 1 : 0, gPreview ? 1 : 0,
@@ -285,7 +292,7 @@ static void handleSerialLine(String line) {
     return;
   }
   if (line.equalsIgnoreCase("h") || line == "?") {
-    Serial.println("Keys: 1-6 faces | n next | p hotspot | t YYYY-MM-DD HH:MM:SS | e EC11");
+    Serial.println("Keys: 1-7 faces | n next | r weather | p hotspot | t YYYY-MM-DD HH:MM:SS | e EC11");
     Serial.println("EC11: turn=preview | short=confirm | long=Settings");
     Serial.println("Setup: w SSID PASS | s skip Wi-Fi");
   }
@@ -355,6 +362,7 @@ void setup() {
 
   Ec11::begin();
   Settings::begin(Settings::Hooks{settingsGetFace, settingsSetFace});
+  WeatherService::begin();
   selectFace(DEFAULT_FACE, false);
 
   struct tm t{};
@@ -371,6 +379,9 @@ void loop() {
   handleSerial();
   Ec11::poll();
   handleEncoder();
+  if (WeatherService::poll()) {
+    forceRedraw = true;
+  }
 
   // Settings UI: redraw only on input / open; still poll idle-exit via handleInput(0).
   if (Settings::active()) {
