@@ -17,7 +17,7 @@ Arduino_GFX *display = new Arduino_GC9A01(bus, TFT_RST, 0 /* rotation */, true /
 // Off-screen RGB565 buffer (~112KB). Faces draw here, then flush once — no black flash.
 static Arduino_Canvas *canvas = nullptr;
 
-static FaceId gFaceId = DEFAULT_FACE;       // currently shown (may be preview)
+static FaceId gFaceId = DEFAULT_FACE;  // currently shown (may be preview)
 static FaceId gCommittedFace = DEFAULT_FACE;
 static IWatchFace *gFace = nullptr;
 static int lastDrawnSecond = -1;
@@ -26,7 +26,17 @@ static int lastProvScreen = -1;
 static bool gPreview = false;
 static uint32_t gPreviewSinceMs = 0;
 
+static const char *gToast = nullptr;
+static uint32_t gToastUntilMs = 0;
+
 static constexpr uint32_t kPreviewAutoCommitMs = 4000;
+static constexpr int kPreviewSize = 196;  // ~82% — floating shrink
+static constexpr uint16_t kPreviewRing = 0xFFFF;
+static constexpr uint16_t kPreviewRingDim = 0x8410;
+
+// X remap for nearest-neighbor scale (src 240 → dst kPreviewSize).
+static uint16_t gPreviewMapX[kPreviewSize];
+static bool gPreviewMapReady = false;
 
 static void showStatus(const char *msg) {
   Serial.printf("[UI] %s\n", msg);
@@ -53,6 +63,94 @@ static bool ensureCanvas() {
   return true;
 }
 
+static void clearToastRegion() {
+  // Toast is drawn near y=200; wipe a band without re-scaling preview.
+  display->fillRect(20, 196, 200, 20, BLACK);
+}
+
+static void drawToastOverlay(Arduino_GFX *gfx) {
+  if (!gToast || millis() > gToastUntilMs) {
+    gToast = nullptr;
+    return;
+  }
+  const int16_t tw = (int16_t)(strlen(gToast) * 6);
+  const int16_t x = (int16_t)((240 - tw) / 2);
+  const int16_t y = 200;
+  gfx->fillRoundRect(x - 6, y - 4, tw + 12, 16, 4, 0x0000);
+  gfx->drawRoundRect(x - 6, y - 4, tw + 12, 16, 4, 0xC618);
+  gfx->setTextColor(0xFFFF);
+  gfx->setTextSize(1);
+  gfx->setCursor(x, y);
+  gfx->print(gToast);
+}
+
+static void showToast(const char *msg, uint32_t ms = 1200) {
+  gToast = msg;
+  gToastUntilMs = millis() + ms;
+  if (gPreview) {
+    // Keep preview FB static — only paint toast on top.
+    drawToastOverlay(display);
+  } else {
+    forceRedraw = true;
+  }
+}
+
+static void ensurePreviewMap() {
+  if (gPreviewMapReady) {
+    return;
+  }
+  for (int x = 0; x < kPreviewSize; ++x) {
+    gPreviewMapX[x] = (uint16_t)(x * 240 / kPreviewSize);
+  }
+  gPreviewMapReady = true;
+}
+
+// One-shot scale blit: black bg + shrink. Uses TFT bulk write (single window).
+static void flushPreviewFloating() {
+  if (!canvas) {
+    return;
+  }
+  uint16_t *fb = canvas->getFramebuffer();
+  if (!fb) {
+    canvas->flush();
+    return;
+  }
+
+  ensurePreviewMap();
+
+  constexpr int src = 240;
+  constexpr int dst = kPreviewSize;
+  constexpr int ox = (240 - dst) / 2;
+  constexpr int oy = (240 - dst) / 2;
+
+  display->fillScreen(BLACK);
+
+  auto *tft = static_cast<Arduino_TFT *>(display);
+  uint16_t row[dst];
+
+  tft->startWrite();
+  tft->writeAddrWindow(ox, oy, dst, dst);
+  for (int y = 0; y < dst; ++y) {
+    const uint16_t *srcRow = fb + (y * src / dst) * src;
+    for (int x = 0; x < dst; ++x) {
+      row[x] = srcRow[gPreviewMapX[x]];
+    }
+    tft->writePixels(row, dst);
+  }
+  tft->endWrite();
+
+  const int16_t cr = (int16_t)(dst / 2 + 2);
+  display->drawCircle(120, 120, cr, kPreviewRing);
+  display->drawCircle(120, 120, cr + 1, kPreviewRingDim);
+
+  const char *name = gFace ? gFace->name() : "?";
+  const int16_t nw = (int16_t)(strlen(name) * 6);
+  display->setTextColor(0xFFFF);
+  display->setTextSize(1);
+  display->setCursor((240 - nw) / 2, 222);
+  display->print(name);
+}
+
 static void selectFace(FaceId id, bool preview) {
   gFaceId = id;
   gFace = getFace(id);
@@ -69,12 +167,14 @@ static void selectFace(FaceId id, bool preview) {
 
 static void commitFace() {
   if (!gPreview && gFaceId == gCommittedFace) {
+    showToast("OK");
     Serial.printf("Face OK %s\n", faceName(gFaceId));
     return;
   }
   gPreview = false;
   gCommittedFace = gFaceId;
   forceRedraw = true;
+  showToast(faceName(gFaceId));
   Serial.printf("Face confirm -> %s (%u)\n", faceName(gFaceId), static_cast<unsigned>(gFaceId));
 }
 
@@ -90,9 +190,16 @@ static void handleEncoder() {
   }
 
   if (Ec11::takeShortPress()) {
-    commitFace();
+    if (gPreview) {
+      commitFace();
+    } else {
+      // Not browsing: short press still acknowledges / can open peek later.
+      showToast(faceName(gFaceId));
+      Serial.printf("EC11 short @ %s\n", faceName(gFaceId));
+    }
   }
   if (Ec11::takeLongPress()) {
+    showToast("Settings...");
     Serial.println("Long press: settings (TODO)");
   }
 
@@ -133,9 +240,15 @@ static void handleSerialLine(String line) {
     }
     return;
   }
+  if (line.equalsIgnoreCase("e")) {
+    Serial.printf("EC11 SW raw=%u activeLow=%d preview=%d face=%s committed=%s\n",
+                  (unsigned)Ec11::swRawLevel(), Ec11::swActiveLow() ? 1 : 0, gPreview ? 1 : 0,
+                  faceName(gFaceId), faceName(gCommittedFace));
+    return;
+  }
   if (line.equalsIgnoreCase("h") || line == "?") {
-    Serial.println("Keys: 1-5 faces | n next | p hotspot | t YYYY-MM-DD HH:MM:SS");
-    Serial.println("EC11: turn=preview face | short=confirm | long=settings(TODO)");
+    Serial.println("Keys: 1-5 faces | n next | p hotspot | t YYYY-MM-DD HH:MM:SS | e EC11");
+    Serial.println("EC11: turn=float preview | short=confirm | long=settings(TODO)");
     Serial.println("Setup: w SSID PASS | s skip Wi-Fi");
   }
 }
@@ -160,10 +273,22 @@ static void redraw(const struct tm &t) {
   if (!gFace) {
     return;
   }
-  Arduino_GFX *target = canvas ? static_cast<Arduino_GFX *>(canvas) : display;
-  gFace->render(target, t);
+
   if (canvas) {
-    canvas->flush();
+    gFace->render(canvas, t);
+    if (gPreview) {
+      flushPreviewFloating();
+    } else {
+      canvas->flush();
+    }
+  } else {
+    gFace->render(display, t);
+  }
+
+  if (!gPreview && gToast && millis() <= gToastUntilMs) {
+    drawToastOverlay(display);
+  } else if (!gPreview) {
+    gToast = nullptr;
   }
 }
 
@@ -174,7 +299,7 @@ void setup() {
   Serial.println("GC9A01 modular watch");
   Serial.println("Setup: keep hotspot on, TAP ALLOW on phone");
   Serial.println("Or: s=skip Wi-Fi | t YYYY-MM-DD HH:MM:SS");
-  Serial.println("EC11: turn=preview | short=confirm | long=settings(TODO)");
+  Serial.println("EC11: turn=float preview | short=confirm | long=settings(TODO)");
 
   if (!display->begin()) {
     Serial.println("Display init failed");
@@ -209,11 +334,38 @@ void loop() {
   Ec11::poll();
   handleEncoder();
 
+  // Preview: freeze frame — no per-second refresh (avoids scale-blit jitter).
+  if (gPreview) {
+    const bool toastAlive = gToast && millis() <= gToastUntilMs;
+    static bool toastWasAlive = false;
+    if (toastWasAlive && !toastAlive) {
+      clearToastRegion();
+      gToast = nullptr;
+    }
+    toastWasAlive = toastAlive;
+
+    if (forceRedraw) {
+      struct tm t{};
+      TimeService::now(t);
+      redraw(t);
+      forceRedraw = false;
+    }
+    delay(2);
+    return;
+  }
+
   struct tm t{};
   TimeService::now(t);
 
-  if (!forceRedraw && t.tm_sec == lastDrawnSecond) {
-    delay(5);  // keep encoder responsive
+  const bool toastAlive = gToast && millis() <= gToastUntilMs;
+  static bool toastWasAlive = false;
+  if (toastWasAlive && !toastAlive) {
+    forceRedraw = true;  // clear toast pixels
+  }
+  toastWasAlive = toastAlive;
+
+  if (!forceRedraw && t.tm_sec == lastDrawnSecond && !toastAlive) {
+    delay(2);
     return;
   }
 

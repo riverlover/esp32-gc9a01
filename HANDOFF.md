@@ -9,7 +9,7 @@
 | 硬件接线 | 已接好并点亮 |
 | macOS 识别 | Espressif USB JTAG/serial，无需额外驱动 |
 | 工具链 | PlatformIO Core 6.1.19（`~/.platformio/penv/bin`） |
-| 固件 | 模块化表盘；**默认 Photo(5)**；STA + NTP 已通；**EC11 切面已接** |
+| 固件 | 模块化表盘；**默认 Photo(5)**；STA + NTP；**EC11 悬浮预览切面已通** |
 | Wi‑Fi | 热点 `WatchESP` 已通；家宽 `TP-LINK_D6B1` **空载（拔屏）已通** |
 | 工程路径 | `/Users/lizhenhe/vscode/esp32-GC9A01` |
 
@@ -43,7 +43,8 @@
 | + | **3.3** |
 | GND | **G** |
 
-交互：旋转预览切面 → 短按确认（停转约 4s 自动确认）→ 长按预留设置。驱动：`src/input/Ec11.*`。
+交互：旋转 → **黑底缩小悬浮预览**（静态冻结）→ 短按确认全屏（停转约 4s 自动确认）→ 长按 Toast 预留设置。  
+SW 上电自动判极性；串口 `e` 诊断。驱动：`src/input/Ec11.*`。
 
 ### 屏 PCB 备注
 
@@ -147,7 +148,7 @@ pio run -t upload
 
 ## 后续可做
 
-- EC11：预览缩小悬浮视觉、短按/长按屏上反馈、长按设置菜单
+- EC11 长按设置菜单（时区 / 配网 / 亮度）
 - Calendar / Photo 表盘专用旋钮交互；断网保时（RTC）
 - **接回 GC9A01 有载复测** `TP-LINK_D6B1`（对照空载成功）
 - 有载仍失败时：缩短杜邦线、加近端去耦、或家宽单独 2.4G IoT SSID

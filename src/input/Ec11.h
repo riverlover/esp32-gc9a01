@@ -16,4 +16,8 @@ int8_t takeRotation();
 bool takeShortPress();
 bool takeLongPress();
 
+// Idle sample of SW pin (after pull-up). For Serial diagnostics.
+uint8_t swRawLevel();
+bool swActiveLow();
+
 }  // namespace Ec11
