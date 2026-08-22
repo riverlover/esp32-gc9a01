@@ -132,9 +132,13 @@ static void flushPreviewFloating() {
   uint16_t row[dst];
 
   // Nearest-neighbor shrink + circular mask (photo faces are square bitmaps).
+  // Poll EC11 inside the SPI loop so detents aren't dropped during long flushes.
   tft->startWrite();
   tft->writeAddrWindow(ox, oy, dst, dst);
   for (int y = 0; y < dst; ++y) {
+    if ((y & 15) == 0) {
+      Ec11::poll();
+    }
     const int dy = y - cr;
     const int dy2 = dy * dy;
     const uint16_t *srcRow = fb + (y * src / dst) * src;
@@ -258,7 +262,7 @@ static void handleSerialLine(String line) {
     selectFace(nextFace(gFaceId), false);
     return;
   }
-  if (line.length() == 1 && line[0] >= '1' && line[0] <= '7') {
+  if (line.length() == 1 && line[0] >= '1' && line[0] <= '8') {
     selectFace(static_cast<FaceId>(line[0] - '1'), false);
     return;
   }
@@ -293,7 +297,7 @@ static void handleSerialLine(String line) {
     return;
   }
   if (line.equalsIgnoreCase("h") || line == "?") {
-    Serial.println("Keys: 1-7 faces | n next | r weather | p hotspot | t YYYY-MM-DD HH:MM:SS | e EC11");
+    Serial.println("Keys: 1-8 faces | n next | r weather | p hotspot | t YYYY-MM-DD HH:MM:SS | e EC11");
     Serial.println("EC11: turn=preview | short=confirm | long=Settings");
     Serial.println("Setup: w SSID PASS | s skip Wi-Fi");
   }
@@ -320,13 +324,16 @@ static void redraw(const struct tm &t) {
     return;
   }
 
+  Ec11::poll();
   if (canvas) {
     gFace->render(canvas, t);
+    Ec11::poll();
     if (gPreview) {
       flushPreviewFloating();
     } else {
       canvas->flush();
     }
+    Ec11::poll();
   } else {
     gFace->render(display, t);
   }

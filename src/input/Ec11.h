@@ -3,7 +3,8 @@
 #include <stdint.h>
 
 // EC11 rotary encoder: quadrature decode + button debounce.
-// Call poll() often from loop(); then take* to consume events.
+// Rotation uses pin CHANGE ISR (survives long SPI/canvas flushes).
+// Call poll() from loop() for the button; take* to consume events.
 namespace Ec11 {
 
 void begin();

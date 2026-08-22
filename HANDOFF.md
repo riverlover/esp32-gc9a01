@@ -9,7 +9,7 @@
 | 硬件接线 | 已接好并点亮 |
 | macOS 识别 | Espressif USB JTAG/serial，无需额外驱动 |
 | 工具链 | PlatformIO Core 6.1.19（`~/.platformio/penv/bin`） |
-| 固件 | 模块化表盘；**默认 Photo(5)**；STA + NTP；**EC11 预览切面 + Settings 已通** |
+| 固件 | 模块化表盘；**Vista(8)** 可用；STA + NTP；**EC11 预览切面（ISR）+ Settings 已通** |
 | Wi‑Fi | 热点 `WatchESP` 已通；家宽 `TP-LINK_D6B1` **空载（拔屏）已通** |
 | 工程路径 | `/Users/lizhenhe/vscode/esp32-GC9A01` |
 
@@ -44,7 +44,7 @@
 | GND | **G** |
 
 交互：旋转 → **黑底缩小悬浮预览**（静态冻结）→ 短按确认全屏（停转约 4s 自动确认）→ **长按进 Settings**。  
-SW 上电自动判极性；串口 `e` 诊断。驱动：`src/input/Ec11.*`；菜单：`src/ui/Settings.*`。
+SW 上电自动判极性；串口 `e` 诊断。驱动：`src/input/Ec11.*`（**正交用 CLK/DT 边沿 ISR**，按键仍 `poll()`）；菜单：`src/ui/Settings.*`。
 
 Settings 高频项：Face / Sync(NTP) / Timezone / Wi‑Fi / **Seconds** / About；旋钮滚、短按进、长按返回；15s 空闲退出。
 
@@ -65,17 +65,18 @@ Settings 高频项：Face / Sync(NTP) / Timezone / Wi‑Fi / **Seconds** / About
 
 ```
 src/main.cpp                 # 编排 / 串口 / EC11 / Settings
-src/config.h                 # 默认；DEFAULT_FACE=Photo
+src/config.h                 # 默认；DEFAULT_FACE（可被 local 覆盖）
 src/config.local.h           # gitignore：Wi‑Fi 与可选覆盖
 src/config.local.h.example
 src/pins.h                   # 屏 + EC11
-src/input/Ec11.*             # 旋钮正交解码 + 按键消抖
+src/input/Ec11.*             # 旋钮：正交 ISR + 按键 poll 消抖
 src/time/TimeService.*       # NTP / Soft / Manual / 运行时区
+src/time/Lunar.h             # 农历 1900–2049（Vista 用）
 src/wifi/WifiProvision.*     # STA 连接（8.5dBm、关省电、多 mode 重试）
 src/ui/ProvQr.*              # 配网提示 / 二维码（历史 SoftAP 用）
 src/ui/Settings.*            # 长按设置菜单
-src/face/                    # Classic…Crown / Dash
-src/weather/                 # Open-Meteo
+src/face/                    # Classic…Crown / Dash / Vista
+src/weather/                 # Open-Meteo（含当日 min/max）
 ```
 
 ## 表盘
@@ -86,13 +87,15 @@ src/weather/                 # Open-Meteo
 | 2 | Lume | 夜光 |
 | 3 | Skeleton | 镂空 |
 | 4 | Calendar | 日历窗 |
-| **5** | **Photo** | **照片背景（当前默认）** |
+| 5 | Photo | 照片背景 |
 | 6 | Crown | 照片背景（皇冠肖像） |
 | 7 | Dash | 多功能：时钟 + 周几/月日 + 天气 |
+| **8** | **Vista** | **白底多功能：指针 + 天气/农历/日期 + 底部数字时**（本地常作默认） |
 
-- 编译期：`#define DEFAULT_FACE FaceId::Photo`
-- 运行期：串口 `1`–`7` / `n` / `r`(刷天气)，或 EC11 旋转/短按
-- Dash：Open‑Meteo（默认北京 lat/lon，见 `WEATHER_*`）
+- 编译期默认：`config.h` 为 `Photo`；本机可用 `config.local.h` → `FaceId::Vista`
+- 运行期：串口 `1`–`8` / `n` / `r`(刷天气)，或 EC11 旋转/短按
+- Dash / Vista：Open‑Meteo（默认北京 lat/lon；Vista 另显示当日低/高与短天气文案）
+- Vista：**不画**心率/步数/睡眠/电量（无对应硬件）；农历为 ASCII（无中文字库）如 `L7/10`
 - Photo / Crown 预览：`flushPreviewFloating` 圆形遮罩，方形图四角不漏
 
 ## Wi‑Fi / NTP（已验证路径）
@@ -190,6 +193,38 @@ pio run -t upload
 3. 屏供电只用 **3.3V**。  
 4. Wi‑Fi 密码只放 `config.local.h`。
 
+## EC11 表盘旋转失效（2026-08-22 排查）
+
+### 现象
+
+- 表盘界面：**旋转大多切不了面**（偶发成功）；长按进 **Settings 后旋转正常**（菜单滚动跟手）。
+- 串口 `n` / `1`–`8` 切面正常 → **软件切面路径与 Face 注册没坏**。
+- 串口 `e`：`settings=0 preview=0`，SW 电平正常 → **不是卡在 Settings、也不是按键死粘**。
+
+### 排查思路（由易到难）
+
+1. **排除硬件**：Settings 内旋转可靠 ⇒ CLK/DT 接线与 EC11 本体基本正常；勿先换线。
+2. **排除 Face 逻辑**：串口 `n` 能切 ⇒ `nextFace` / `getFace` / `selectFace` OK。
+3. **对比两条路径的差异**：
+   - Settings：几乎只画文字列表，SPI 很短，主循环 `delay(2)` 高频 `Ec11::poll()`。
+   - 表盘：每秒（或预览时）`render` + `canvas->flush()` / `flushPreviewFloating`（全屏 240×240 缩放拷贝），**SPI 阻塞可达数十～上百 ms**。
+4. **根因**：原实现在 `loop()` 里 **轮询** 正交 Gray 码。SPI 阻塞期间若漏掉中间电平跳变，`accum` 失步，之后整格 detent 可能永远凑不齐 ±4 → **表现为「转了没反应」**；偶发对上相位就「有时候行」。Settings 几乎不堵 SPI，故表象像「只有表盘坏了」。
+5. **次要加重因素**：Vista 等复杂全屏绘制会拉长阻塞窗口，漏脉冲概率上升（但根因是轮询，不是 Vista 逻辑本身）。
+
+### 解决
+
+- `src/input/Ec11.cpp`：CLK/DT 使用 **`attachInterrupt(..., CHANGE)` ISR** 更新 `prevAb` / `accum` / `rotPending`；`poll()` 只负责 SW 消抖。
+- `takeRotation()` 读写 `rotPending` 时短关中断。
+- 验证：表盘旋转应稳定出缩小预览；Settings 行为不变。串口启动日志含 `isr=1`。
+
+### 以后若再「旋钮失灵」
+
+| 观察 | 更可能 |
+|------|--------|
+| Settings 也转不动 | 硬件 / 引脚 / 上拉 |
+| 仅表盘、串口 `n` 仍可切 | 再查是否有人改回纯 poll、或 ISR 被卸 |
+| 转一下跳很多面 | 正常（阻塞期间 ISR 已累加多格 detent） |
+
 ## 会话复盘（2026-08-22：Crown / Dash / Seconds）
 
 本次会话里多次出现「以为源码是 A、实际磁盘是 B」「写完又对不上、编译反复不对」的情况。根因不是硬件，而是**工作流与工具使用**：
@@ -210,3 +245,9 @@ pio run -t upload
    部分失败来自脚本/tee/路径假设，而非编译器报错；应以 `pio run` 末尾 `SUCCESS`/`Error` 与首条 `error:` 为准。
 
 **以后约定**：磁盘源码是唯一真相 → 改前核对符号 → 小步改、立刻重编（必要时清 `.o`）→ 改后抽查关键片段。
+
+## 会话复盘（2026-08-22：Vista + EC11 ISR）
+
+1. 新增 **Vista** 白底多功能表盘（去掉心率/步数/睡眠/电量等无硬件项）；天气补当日 min/max；农历 `Lunar.h`。
+2. EC11 表盘旋转失灵：用「Settings 正常 / 串口切面正常」快速排除硬件与 Face 注册，定位到 **SPI 长阻塞下轮询正交失步**，改为 **ISR**（见上一节）。
+3. 布局迭代：信息区字号/粗细、温度靠中、图标下短天气文案；避免 `textSize 2` 双描过重拖慢刷新。

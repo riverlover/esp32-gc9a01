@@ -18,9 +18,10 @@ constexpr int8_t kQuadTable[16] = {
     0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1, 0,
 };
 
-uint8_t prevAb = 0;
-int8_t accum = 0;
-int8_t rotPending = 0;
+// Quadrature state — updated from ISR during long SPI flushes.
+volatile uint8_t prevAb = 0;
+volatile int8_t accum = 0;
+volatile int8_t rotPending = 0;
 
 bool activeLow = true;  // pressed drives pin to GND (most modules)
 bool samplePressed = false;
@@ -42,6 +43,30 @@ bool readPressed() {
   return activeLow ? (level == LOW) : (level == HIGH);
 }
 
+void IRAM_ATTR onQuadIsr() {
+  const uint8_t ab = (uint8_t)(((digitalRead(ENC_CLK) & 1) << 1) | (digitalRead(ENC_DT) & 1));
+  if (ab == prevAb) {
+    return;
+  }
+  const uint8_t idx = (uint8_t)((prevAb << 2) | ab);
+  int8_t a = (int8_t)(accum + kQuadTable[idx]);
+  prevAb = ab;
+
+  while (a >= kStepsPerDetent) {
+    a = (int8_t)(a - kStepsPerDetent);
+    if (rotPending < 127) {
+      rotPending = (int8_t)(rotPending + 1);
+    }
+  }
+  while (a <= -kStepsPerDetent) {
+    a = (int8_t)(a + kStepsPerDetent);
+    if (rotPending > -127) {
+      rotPending = (int8_t)(rotPending - 1);
+    }
+  }
+  accum = a;
+}
+
 }  // namespace
 
 void begin() {
@@ -60,9 +85,12 @@ void begin() {
   }
   activeLow = (highN >= 8);
 
+  noInterrupts();
   prevAb = readAb();
   accum = 0;
   rotPending = 0;
+  interrupts();
+
   samplePressed = false;
   stablePressed = false;
   edgeMs = millis();
@@ -71,31 +99,16 @@ void begin() {
   shortPending = false;
   longPending = false;
 
-  Serial.printf("EC11 OK CLK=%d DT=%d SW=%d idle=%u activeLow=%d\n", ENC_CLK, ENC_DT, ENC_SW,
+  // Edge ISR so detents aren't lost while canvas/SPI flush blocks loop().
+  attachInterrupt(digitalPinToInterrupt(ENC_CLK), onQuadIsr, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(ENC_DT), onQuadIsr, CHANGE);
+
+  Serial.printf("EC11 OK CLK=%d DT=%d SW=%d idle=%u activeLow=%d isr=1\n", ENC_CLK, ENC_DT, ENC_SW,
                 (unsigned)digitalRead(ENC_SW), activeLow ? 1 : 0);
 }
 
 void poll() {
-  const uint8_t ab = readAb();
-  if (ab != prevAb) {
-    const uint8_t idx = (uint8_t)((prevAb << 2) | ab);
-    accum = (int8_t)(accum + kQuadTable[idx]);
-    prevAb = ab;
-
-    while (accum >= kStepsPerDetent) {
-      accum = (int8_t)(accum - kStepsPerDetent);
-      if (rotPending < 127) {
-        ++rotPending;
-      }
-    }
-    while (accum <= -kStepsPerDetent) {
-      accum = (int8_t)(accum + kStepsPerDetent);
-      if (rotPending > -127) {
-        --rotPending;
-      }
-    }
-  }
-
+  // Button only — rotation is ISR-driven.
   const bool pressed = readPressed();
   const uint32_t now = millis();
 
@@ -135,8 +148,10 @@ void poll() {
 }
 
 int8_t takeRotation() {
+  noInterrupts();
   const int8_t d = rotPending;
   rotPending = 0;
+  interrupts();
   return d;
 }
 

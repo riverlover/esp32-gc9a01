@@ -77,7 +77,7 @@
 #define DEFAULT_SHOW_SECONDS 1
 #endif
 
-// Boot face. Runtime: Serial '1'..'7' or 'n' to cycle.
+// Boot face. Runtime: Serial '1'..'8' or 'n' to cycle.
 #ifndef DEFAULT_FACE
 #define DEFAULT_FACE FaceId::Photo
 #endif

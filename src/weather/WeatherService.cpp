@@ -41,7 +41,7 @@ const char *conditionLabel(int code) {
   if (code >= 95) {
     return "Storm";
   }
-  return "—";
+  return "-";
 }
 
 static bool parseAfter(const char *json, const char *key, float &out) {
@@ -81,6 +81,8 @@ static bool fetchOnce() {
            "https://api.open-meteo.com/v1/forecast"
            "?latitude=%.4f&longitude=%.4f"
            "&current=temperature_2m,relative_humidity_2m,weather_code"
+           "&daily=temperature_2m_max,temperature_2m_min"
+           "&forecast_days=1"
            "&timezone=auto",
            (double)WEATHER_LAT, (double)WEATHER_LON);
 
@@ -120,13 +122,43 @@ static bool fetchOnce() {
   }
   parseAfterInt(current, "\"relative_humidity_2m\"", humidity);
 
+  float tMin = 0;
+  float tMax = 0;
+  bool hasRange = false;
+  const char *daily = strstr(json, "\"daily\"");
+  if (daily) {
+    // Open-Meteo returns arrays; first element is today.
+    const char *pMin = strstr(daily, "\"temperature_2m_min\"");
+    const char *pMax = strstr(daily, "\"temperature_2m_max\"");
+    if (pMin && pMax) {
+      pMin = strchr(pMin, '[');
+      pMax = strchr(pMax, '[');
+      if (pMin && pMax) {
+        char *endMin = nullptr;
+        char *endMax = nullptr;
+        tMin = strtof(pMin + 1, &endMin);
+        tMax = strtof(pMax + 1, &endMax);
+        hasRange = (endMin != pMin + 1) && (endMax != pMax + 1);
+      }
+    }
+  }
+
   gSnap.valid = true;
   gSnap.tempC = temp;
+  gSnap.tempMinC = tMin;
+  gSnap.tempMaxC = tMax;
+  gSnap.hasRange = hasRange;
   gSnap.humidity = humidity;
   gSnap.weatherCode = wmo;
   gSnap.updatedMs = millis();
-  Serial.printf("Weather OK %.1fC rh=%d code=%d (%s)\n", gSnap.tempC, gSnap.humidity,
-                gSnap.weatherCode, conditionLabel(gSnap.weatherCode));
+  if (hasRange) {
+    Serial.printf("Weather OK %.1fC (%.0f/%.0f) rh=%d code=%d (%s)\n", gSnap.tempC,
+                  (double)gSnap.tempMinC, (double)gSnap.tempMaxC, gSnap.humidity,
+                  gSnap.weatherCode, conditionLabel(gSnap.weatherCode));
+  } else {
+    Serial.printf("Weather OK %.1fC rh=%d code=%d (%s)\n", gSnap.tempC, gSnap.humidity,
+                  gSnap.weatherCode, conditionLabel(gSnap.weatherCode));
+  }
   return true;
 }
 

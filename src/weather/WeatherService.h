@@ -7,6 +7,9 @@ namespace WeatherService {
 struct Snapshot {
   bool valid = false;
   float tempC = 0;
+  float tempMinC = 0;
+  float tempMaxC = 0;
+  bool hasRange = false;
   int humidity = 0;
   int weatherCode = 0;  // WMO
   uint32_t updatedMs = 0;

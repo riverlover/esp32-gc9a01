@@ -7,6 +7,7 @@
 #include "FaceLume.h"
 #include "FacePhoto.h"
 #include "FaceSkeleton.h"
+#include "FaceVista.h"
 
 IWatchFace *getFace(FaceId id) {
   static FaceClassic classic;
@@ -16,6 +17,7 @@ IWatchFace *getFace(FaceId id) {
   static FacePhoto photo;
   static FaceCrown crown;
   static FaceDash dash;
+  static FaceVista vista;
 
   switch (id) {
     case FaceId::Lume:
@@ -30,6 +32,8 @@ IWatchFace *getFace(FaceId id) {
       return &crown;
     case FaceId::Dash:
       return &dash;
+    case FaceId::Vista:
+      return &vista;
     case FaceId::Classic:
     default:
       return &classic;

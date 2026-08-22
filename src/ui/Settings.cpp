@@ -310,9 +310,9 @@ void draw(Arduino_GFX *gfx) {
     case Screen::Face: {
       const int n = (int)FaceId::Count;
       for (int i = 0; i < n; ++i) {
-        drawListItem(gfx, (int16_t)(64 + i * 18), faceName(static_cast<FaceId>(i)), i == gIndex);
+        drawListItem(gfx, (int16_t)(52 + i * 16), faceName(static_cast<FaceId>(i)), i == gIndex);
       }
-      drawListItem(gfx, (int16_t)(64 + n * 18), "Back", gIndex == n);
+      drawListItem(gfx, (int16_t)(52 + n * 16), "Back", gIndex == n);
       if (gStatusLine[0]) {
         drawCentered(gfx, 210, gStatusLine, COL_HL);
       }
