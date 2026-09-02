@@ -31,6 +31,14 @@ ESP32-C3 Super Mini 驱动 1.28" GC9A01（240×240）圆形 TFT，实现模块�
 | CS | **10** | 蓝 |
 | RST | **3** | 紫 |
 
+| TF 卡（SPI 与屏共用 SCK/MOSI） | ESP32-C3 |
+|------|----------|
+| CS | **4** |
+| MISO | **20** |
+| MOSI | **7**（与屏 SDA） |
+| SCK | **6**（与屏 SCL） |
+| VCC / GND | **3.3** / **G** |
+
 | EC11 | ESP32-C3 |
 |------|----------|
 | CLK | **0** |
@@ -131,6 +139,7 @@ Dash 天气默认坐标北京（`WEATHER_LAT` / `WEATHER_LON`），可在 `confi
 | Sync | 立即 NTP 校时（需 Wi‑Fi） |
 | Timezone | 运行时区 UTC−12…+14 |
 | Wi‑Fi | 状态 / Reconnect（等手机热点，会阻塞） |
+| SD Card | 浏览 `/roms`（旋钮滚动；短按进目录/看大小；`..` 返回上级） |
 | About | heap、时间源、IP |
 | Back | 退出 |
 
@@ -164,6 +173,7 @@ src/time/              # NTP / Soft / Manual / 时区
 src/wifi/              # STA 连接与 RF 调参
 src/ui/                # 配网提示 / Settings
 src/prefs/             # NVS 偏好（如 Seconds）
+src/sd/                # TF 卡（与屏共用 SPI）
 src/face/              # Classic…Crown / Dash
 src/weather/           # Open-Meteo 天气
 ```

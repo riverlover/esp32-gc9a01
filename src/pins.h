@@ -12,3 +12,8 @@
 #define ENC_CLK 0
 #define ENC_DT  1
 #define ENC_SW  5
+
+// TF / microSD (SPI shared with TFT: SCK=6 MOSI=7)
+// CS->4  MISO->20  VCC->3.3  GND->G
+#define SD_CS   4
+#define SD_MISO 20

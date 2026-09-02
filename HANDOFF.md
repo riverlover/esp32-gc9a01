@@ -9,7 +9,7 @@
 | 硬件接线 | 已接好并点亮 |
 | macOS 识别 | Espressif USB JTAG/serial，无需额外驱动 |
 | 工具链 | PlatformIO Core 6.1.19（`~/.platformio/penv/bin`） |
-| 固件 | 模块化表盘；**Vista(8)** 可用；STA + NTP；**EC11 预览切面（ISR）+ Settings 已通** |
+| 固件 | 模块化表盘；**Vista(8)** 可用；STA + NTP；**EC11 预览切面（ISR）+ Settings 已通**；**TF 卡目录浏览已通** |
 | Wi‑Fi | 热点 `WatchESP` 已通；家宽 `TP-LINK_D6B1` **空载（拔屏）已通** |
 | 工程路径 | `/Users/lizhenhe/vscode/esp32-GC9A01` |
 
@@ -31,6 +31,16 @@
 | CS | **10** | 蓝 |
 | RST | **3** | 紫 |
 
+### TF / microSD（与 `src/pins.h` 一致，SPI 与屏共用 SCK/MOSI）
+
+| TF | ESP32-C3 |
+|----|----------|
+| CS | **4** |
+| MISO | **20** |
+| MOSI | **7**（与屏 SDA） |
+| SCK | **6**（与屏 SCL） |
+| VCC / GND | **3.3** / **G** |
+
 说明：信号脚可改，但必须与代码宏一致。尽量避开 GPIO 8/9（启动相关）。
 
 ### EC11（与 `src/pins.h` 一致）
@@ -46,7 +56,8 @@
 交互：旋转 → **黑底缩小悬浮预览**（静态冻结）→ 短按确认全屏（停转约 4s 自动确认）→ **长按进 Settings**。  
 SW 上电自动判极性；串口 `e` 诊断。驱动：`src/input/Ec11.*`（**正交用 CLK/DT 边沿 ISR**，按键仍 `poll()`）；菜单：`src/ui/Settings.*`。
 
-Settings 高频项：Face / Sync(NTP) / Timezone / Wi‑Fi / **Seconds** / About；旋钮滚、短按进、长按返回；15s 空闲退出。
+Settings 高频项：Face / Sync(NTP) / Timezone / Wi‑Fi / **Seconds** / **SD Card** / About；旋钮滚、短按进、长按返回；15s 空闲退出。  
+**SD Card**：默认打开 `/roms`；短按进目录 / 看文件大小；`..` 上级；中文名屏上显示为 `?`（内置字库），完整名打串口。
 
 ### 屏 PCB 备注
 
@@ -68,8 +79,10 @@ src/main.cpp                 # 编排 / 串口 / EC11 / Settings
 src/config.h                 # 默认；DEFAULT_FACE（可被 local 覆盖）
 src/config.local.h           # gitignore：Wi‑Fi 与可选覆盖
 src/config.local.h.example
-src/pins.h                   # 屏 + EC11
+src/pins.h                   # 屏 + EC11 + TF
 src/input/Ec11.*             # 旋钮：正交 ISR + 按键 poll 消抖
+src/sd/SdService.*           # TF 卡挂载 / 列目录（与屏共用 SPI）
+src/sd_list_main.cpp         # 仅测卡：`pio run -e sd_list`
 src/time/TimeService.*       # NTP / Soft / Manual / 运行时区
 src/time/Lunar.h             # 农历 1900–2049（Vista 用）
 src/wifi/WifiProvision.*     # STA 连接（8.5dBm、关省电、多 mode 重试）
@@ -176,9 +189,30 @@ pio run -t upload
 7. **RF** — 已用较低 TX（约 8.5 dBm）+ 关 modem sleep（握手期）；保持即可。
 8. **硬件** — 稳压效率、杜邦压降、电池内阻；屏供电干净可减少 Wi‑Fi 重试（间接省电）。
 
+## TF 卡 + 共用 SPI（2026-09-02）
+
+### 现象与根因
+
+1. **可并存**：屏 CS=10、卡 CS=4、MISO=20，SCK/MOSI 共用；不是硬件互斥。
+2. **`SD.begin()` 调 `SPI.begin()`** 与 `Arduino_ESP32SPI` 抢同一 FSPI → Settings 直接画屏曾花屏 / 白底 / 高亮错位。
+3. **恢复反色写错**：GC9A01 + `IPS=true` 时，`invertDisplay(false)` → **INVON**（`tftInit` 同款）；`invertDisplay(true)` → **INVOFF**，整屏像负片。
+
+### 落地做法
+
+- `Arduino_ESP32SPI(..., SD_MISO)`，与卡同为全双工配置。
+- `SPI.begin(SCK, MISO, MOSI, -1)`，CS 用 GPIO，勿绑硬件 SS。
+- SD 访问前后拉高两边 CS；结束后 `reclaimDisplayAfterSd()`：`invertDisplay(false)` + `setRotation(0)` + 一次 `startWrite/endWrite`。
+- Settings 走 **canvas → flush**（与表盘同路径）。
+- 独立自检环境：`pio run -e sd_list -t upload`（`src/sd_list_main.cpp`）。
+
+### 验证
+
+- 启动串口：`SD OK … 121MB`；卡内有 `/roms/nes` 等。
+- 表盘颜色正常；Settings 黑底高亮正常；可浏览 `/roms`。
+
 ## 后续可做
 
-- Settings：亮度 / 休眠（需背光硬件）；Wi‑Fi Reconnect 非阻塞化
+- Settings：亮度 / 休眠（需背光硬件）；Wi‑Fi Reconnect 非阻塞化；SD 中文名 / 仿真器后续
 - Calendar / Photo 表盘专用旋钮交互；断网保时（RTC）
 - Dash 天气：更多城市预设 / Settings 里手动刷新
 - BLE / App 配网（本板历史不稳定，优先官方 ESP BLE Prov 验证）

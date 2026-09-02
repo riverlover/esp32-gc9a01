@@ -13,12 +13,28 @@
 #include "ui/ProvQr.h"
 #include "prefs/WatchPrefs.h"
 #include "ui/Settings.h"
+#include "sd/SdService.h"
 #include "weather/WeatherService.h"
 
-Arduino_DataBus *bus = new Arduino_ESP32SPI(TFT_DC, TFT_CS, TFT_SCLK, TFT_MOSI, -1);
+// Share MISO with TF card so GFX/SD agree on full-duplex FSPI config.
+Arduino_DataBus *bus = new Arduino_ESP32SPI(TFT_DC, TFT_CS, TFT_SCLK, TFT_MOSI, SD_MISO);
 Arduino_GFX *display = new Arduino_GC9A01(bus, TFT_RST, 0 /* rotation */, true /* IPS */);
 // Off-screen RGB565 buffer (~112KB). Faces draw here, then flush once — no black flash.
 static Arduino_Canvas *canvas = nullptr;
+
+// SD.begin() uses SPIClass and clobbers the same SPI2; restore panel + bus handshake.
+static void reclaimDisplayAfterSd() {
+  pinMode(SD_CS, OUTPUT);
+  digitalWrite(SD_CS, HIGH);
+  pinMode(TFT_CS, OUTPUT);
+  digitalWrite(TFT_CS, HIGH);
+  // GC9A01 + IPS=true: invertDisplay(false) → INVON (same as tftInit).
+  // invertDisplay(true) would send INVOFF and look like a color negative.
+  display->invertDisplay(false);
+  display->setRotation(0);
+  display->startWrite();
+  display->endWrite();
+}
 
 static FaceId gFaceId = DEFAULT_FACE;  // currently shown (may be preview)
 static FaceId gCommittedFace = DEFAULT_FACE;
@@ -370,6 +386,9 @@ void setup() {
 
   Ec11::begin();
   WatchPrefs::begin();
+  SdService::setBusReclaim(reclaimDisplayAfterSd);
+  // Mount SD after TFT is up; reclaim restores invert/SPI for subsequent draws.
+  SdService::begin();
   Settings::begin(Settings::Hooks{settingsGetFace, settingsSetFace});
   WeatherService::begin();
   selectFace(DEFAULT_FACE, false);
@@ -400,7 +419,13 @@ void loop() {
     if (!Settings::active()) {
       forceRedraw = true;
     } else if (gSettingsDirty) {
-      Settings::draw(display);
+      // Draw via canvas+flush (same SPI path as faces) after shared-SD bus use.
+      if (canvas) {
+        Settings::draw(canvas);
+        canvas->flush();
+      } else {
+        Settings::draw(display);
+      }
       gSettingsDirty = false;
     }
     delay(2);

@@ -7,6 +7,7 @@
 #include "config.h"
 #include "face/FaceId.h"
 #include "prefs/WatchPrefs.h"
+#include "sd/SdService.h"
 #include "time/TimeService.h"
 #include "wifi/WifiProvision.h"
 
@@ -19,7 +20,7 @@ constexpr uint16_t COL_FG = 0xFFFF;
 constexpr uint16_t COL_DIM = 0x8410;
 constexpr uint16_t COL_HL = 0x05FF;
 
-enum class Screen : uint8_t { Root = 0, Face, Sync, Tz, Wifi, About };
+enum class Screen : uint8_t { Root = 0, Face, Sync, Tz, Wifi, Sd, About };
 
 Hooks gHooks{};
 bool gOn = false;
@@ -28,9 +29,13 @@ int8_t gIndex = 0;
 uint32_t gLastInputMs = 0;
 char gStatusLine[48] = "";
 
-constexpr int kRootCount = 7;
+constexpr int kRootCount = 8;
 constexpr int kIdxSeconds = 4;
-constexpr int kIdxAbout = 5;
+constexpr int kIdxSd = 5;
+constexpr int kIdxAbout = 6;
+
+// SD browser: path stack for long-press / Back.
+char gSdPath[48] = "/roms";
 
 void touch() { gLastInputMs = millis(); }
 
@@ -52,6 +57,58 @@ int8_t clampIndex(int8_t i, int8_t n) {
   return i;
 }
 
+void sdParentPath(char *path, size_t n) {
+  if (strcmp(path, "/") == 0) {
+    return;
+  }
+  char *slash = strrchr(path, '/');
+  if (!slash) {
+    strncpy(path, "/", n);
+    path[n - 1] = '\0';
+    return;
+  }
+  if (slash == path) {
+    path[1] = '\0';
+    return;
+  }
+  *slash = '\0';
+}
+
+bool sdJoin(char *path, size_t n, const char *name) {
+  const size_t pl = strlen(path);
+  const size_t nl = strlen(name);
+  if (pl + 1 + nl + 1 > n) {
+    return false;
+  }
+  if (strcmp(path, "/") == 0) {
+    snprintf(path, n, "/%s", name);
+  } else {
+    snprintf(path + pl, n - pl, "/%s", name);
+  }
+  return true;
+}
+
+// Sd list rows: optional ".." + entries + Back
+int sdRowCount() {
+  const int up = (strcmp(gSdPath, "/") == 0) ? 0 : 1;
+  return up + SdService::entryCount() + 1;
+}
+
+void openSdBrowser() {
+  gScreen = Screen::Sd;
+  strncpy(gSdPath, "/roms", sizeof(gSdPath) - 1);
+  gSdPath[sizeof(gSdPath) - 1] = '\0';
+  if (!SdService::mounted()) {
+    SdService::begin();
+  }
+  if (!SdService::refresh(gSdPath)) {
+    strncpy(gSdPath, "/", sizeof(gSdPath) - 1);
+    SdService::refresh(gSdPath);
+  }
+  gIndex = 0;
+  setStatus(SdService::mounted() ? SdService::statusLine() : "SD fail");
+}
+
 int screenCount() {
   switch (gScreen) {
     case Screen::Root:
@@ -64,6 +121,8 @@ int screenCount() {
       return 3;
     case Screen::Wifi:
       return 3;
+    case Screen::Sd:
+      return sdRowCount();
     case Screen::About:
       return 1;
   }
@@ -82,6 +141,8 @@ const char *titleFor() {
       return "Timezone";
     case Screen::Wifi:
       return "Wi-Fi";
+    case Screen::Sd:
+      return "SD Card";
     case Screen::About:
       return "About";
   }
@@ -118,6 +179,9 @@ void rootLabel(int i, char *out, size_t n) {
       break;
     case kIdxSeconds:
       snprintf(out, n, "Seconds: %s", WatchPrefs::showSeconds() ? "ON" : "OFF");
+      break;
+    case kIdxSd:
+      snprintf(out, n, "SD Card");
       break;
     case kIdxAbout:
       snprintf(out, n, "About");
@@ -194,7 +258,7 @@ bool handleInput(int8_t rot, bool shortPress, bool longPress) {
     if (gScreen == Screen::Root) {
       close();
     } else {
-      goBack();
+      goRoot();  // leave submenu (incl. SD) back to Settings root
     }
     return true;
   }
@@ -226,6 +290,9 @@ bool handleInput(int8_t rot, bool shortPress, bool longPress) {
           case kIdxSeconds:
             WatchPrefs::setShowSeconds(!WatchPrefs::showSeconds());
             setStatus(WatchPrefs::showSeconds() ? "Seconds ON" : "Seconds OFF");
+            break;
+          case kIdxSd:
+            openSdBrowser();
             break;
           case kIdxAbout:
             gScreen = Screen::About;
@@ -274,6 +341,45 @@ bool handleInput(int8_t rot, bool shortPress, bool longPress) {
         }
         break;
 
+      case Screen::Sd: {
+        const int hasUp = (strcmp(gSdPath, "/") == 0) ? 0 : 1;
+        const int n = SdService::entryCount();
+        const int backIdx = hasUp + n;
+        if (gIndex == backIdx) {
+          goRoot();
+          break;
+        }
+        if (hasUp && gIndex == 0) {
+          sdParentPath(gSdPath, sizeof(gSdPath));
+          SdService::refresh(gSdPath);
+          gIndex = 0;
+          setStatus(SdService::statusLine());
+          break;
+        }
+        const SdService::Entry *e = SdService::entry(gIndex - hasUp);
+        if (!e) {
+          break;
+        }
+        if (e->isDir) {
+          char next[48];
+          strncpy(next, gSdPath, sizeof(next) - 1);
+          next[sizeof(next) - 1] = '\0';
+          if (sdJoin(next, sizeof(next), e->name) && SdService::refresh(next)) {
+            strncpy(gSdPath, next, sizeof(gSdPath) - 1);
+            gSdPath[sizeof(gSdPath) - 1] = '\0';
+            gIndex = 0;
+            setStatus(SdService::statusLine());
+          } else {
+            setStatus("open fail");
+          }
+        } else {
+          char msg[40];
+          snprintf(msg, sizeof(msg), "%lu B", (unsigned long)e->size);
+          setStatus(msg);
+        }
+        break;
+      }
+
       case Screen::About:
         goBack();
         break;
@@ -300,7 +406,7 @@ void draw(Arduino_GFX *gfx) {
     case Screen::Root:
       for (int i = 0; i < kRootCount; ++i) {
         rootLabel(i, line, sizeof(line));
-        drawListItem(gfx, (int16_t)(52 + i * 18), line, i == gIndex);
+        drawListItem(gfx, (int16_t)(48 + i * 16), line, i == gIndex);
       }
       if (gStatusLine[0]) {
         drawCentered(gfx, 200, gStatusLine, COL_HL);
@@ -361,6 +467,48 @@ void draw(Arduino_GFX *gfx) {
       drawListItem(gfx, 140, "Back", gIndex == 2);
       if (gStatusLine[0]) {
         drawCentered(gfx, 175, gStatusLine, COL_HL);
+      }
+      break;
+    }
+
+    case Screen::Sd: {
+      drawCentered(gfx, 48, SdService::currentPath(), COL_DIM);
+      const int hasUp = (strcmp(gSdPath, "/") == 0) ? 0 : 1;
+      const int n = SdService::entryCount();
+      const int total = sdRowCount();
+      constexpr int kVisible = 7;
+      int start = gIndex - kVisible / 2;
+      if (start < 0) {
+        start = 0;
+      }
+      if (start > total - kVisible) {
+        start = total - kVisible;
+      }
+      if (start < 0) {
+        start = 0;
+      }
+
+      for (int row = 0; row < kVisible; ++row) {
+        const int i = start + row;
+        if (i >= total) {
+          break;
+        }
+        const int16_t y = (int16_t)(64 + row * 16);
+        if (hasUp && i == 0) {
+          drawListItem(gfx, y, "..", i == gIndex);
+        } else if (i < hasUp + n) {
+          const SdService::Entry *e = SdService::entry(i - hasUp);
+          if (!e) {
+            continue;
+          }
+          SdService::formatLabel(*e, line, sizeof(line));
+          drawListItem(gfx, y, line, i == gIndex);
+        } else {
+          drawListItem(gfx, y, "Back", i == gIndex);
+        }
+      }
+      if (gStatusLine[0]) {
+        drawCentered(gfx, 190, gStatusLine, COL_HL);
       }
       break;
     }
